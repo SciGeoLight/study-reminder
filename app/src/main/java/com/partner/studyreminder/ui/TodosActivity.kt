@@ -1,6 +1,9 @@
 package com.partner.studyreminder.ui
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
@@ -83,10 +86,12 @@ import androidx.core.content.FileProvider
 import com.kyant.backdrop.Backdrop
 import com.kyant.shapes.Capsule
 import com.partner.studyreminder.alarm.AlarmScheduler
+import com.partner.studyreminder.data.Plans
 import com.partner.studyreminder.data.Todo
 import com.partner.studyreminder.data.TodoGroup
 import com.partner.studyreminder.data.TodoImages
 import com.partner.studyreminder.data.Todos
+import com.partner.studyreminder.parse.PlanParsers
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
 import com.partner.studyreminder.ui.glass.GlassOverlay
@@ -108,6 +113,7 @@ import kotlinx.coroutines.delay
 
 class TodosActivity : ComponentActivity() {
     private var tick by mutableIntStateOf(0)
+    private var groupFilter by mutableStateOf(FILTER_ALL)
     private var imageSink: ((List<Uri>) -> Unit)? = null
     private var cameraSink: ((File?) -> Unit)? = null
     private var cameraFile: File? = null
@@ -118,6 +124,15 @@ class TodosActivity : ComponentActivity() {
         val sink = imageSink
         imageSink = null
         sink?.invoke(uris)
+    }
+
+    private val openFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        openPreviewFrom { TextIntents.read(this, uri) }
+    }
+
+    private val preview = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (it.resultCode == RESULT_OK) tick++
     }
 
     private val takePhoto = registerForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
@@ -134,6 +149,7 @@ class TodosActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        groupFilter = intent.getStringExtra(EXTRA_FILTER) ?: FILTER_ALL
         installPush()
         edgeToEdge()
         setContent {
@@ -213,6 +229,17 @@ class TodosActivity : ComponentActivity() {
                             toast("没有找到相册")
                         }
                     },
+                    initialFilter = groupFilter,
+                    onImport = { importClipboard() },
+                    onOpenFile = {
+                        openFile.launch(
+                            arrayOf("text/calendar", "text/plain", "application/octet-stream", "application/ics"),
+                        )
+                    },
+                    onTestAlarm = { testAlarm() },
+                    onClearDay = { clearToday() },
+                    onPermissions = { launchPush(Intent(this, PermissionActivity::class.java)) },
+                    onSettings = { launchPush(Intent(this, SettingsActivity::class.java)) },
                     onTakePhoto = { sink ->
                         val file = File(cacheDir, "camera/${UUID.randomUUID()}.jpg")
                         file.parentFile?.mkdirs()
@@ -285,9 +312,82 @@ class TodosActivity : ComponentActivity() {
         tick++
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        groupFilter = intent.getStringExtra(EXTRA_FILTER) ?: FILTER_ALL
+    }
+
     override fun onResume() {
         super.onResume()
         edgeToEdge()
         tick++
+    }
+
+    private fun importClipboard() {
+        val text = readClipboard()
+        if (text.isNullOrBlank()) {
+            toast("剪贴板是空的。先在聊天里复制整段计划，再回到这里点导入。")
+            return
+        }
+        openPreview(text)
+    }
+
+    private fun readClipboard(): String? {
+        return try {
+            val clipboard = getSystemService(ClipboardManager::class.java) ?: return null
+            val clip: ClipData = clipboard.primaryClip ?: return null
+            if (clip.itemCount == 0) return null
+            clip.getItemAt(0).coerceToText(this)?.toString()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun openPreviewFrom(block: () -> String) {
+        val text = try {
+            block()
+        } catch (e: Exception) {
+            toast("读文件失败：" + (e.message ?: "未知错误"))
+            return
+        }
+        openPreview(text)
+    }
+
+    private fun openPreview(text: String) {
+        if (text.length > 1_000_000) {
+            toast("内容太长，没法导入。")
+            return
+        }
+        val parsed = PlanParsers.parseAny(text)
+        if (parsed.items.isEmpty() && parsed.todos.isEmpty()) {
+            val hint = parsed.warnings.firstOrNull()?.let { " $it" }.orEmpty()
+            toast("没有识别到计划。$hint")
+            return
+        }
+        launchRise(
+            preview,
+            Intent(this, ImportPreviewActivity::class.java).putExtra(ImportPreviewActivity.EXTRA_RAW, text),
+        )
+    }
+
+    private fun testAlarm() {
+        if (!AlarmScheduler.canScheduleExact(this)) {
+            toast("精确闹钟权限没开，测试可能不会响。先到菜单里的「权限检查」打开。")
+        }
+        AlarmScheduler.scheduleTest(this)
+        toast("5 秒后响铃。可以锁屏试一次，锁屏时也应该弹出。")
+    }
+
+    private fun clearToday() {
+        val removed = Plans.of(this).clearDay(PlanTime.today().toString())
+        AlarmScheduler.cancelItems(this, removed)
+        AlarmScheduler.rescheduleAll(this)
+        tick++
+        toast("已清空。")
+    }
+
+    companion object {
+        const val EXTRA_FILTER = "group_filter"
     }
 }

@@ -120,6 +120,16 @@ class DampedDragAnimation(
         }
     }
 
+    /** Move the value with the same spring, without the press-scale used by a finger drag. */
+    fun slideTo(value: Float) {
+        val target = value.coerceIn(valueRange)
+        animationScope.launch {
+            mutatorMutex.mutate {
+                valueAnimation.animateTo(target, valueAnimationSpec)
+            }
+        }
+    }
+
     private fun updateVelocity() {
         velocityTracker.addPosition(Clock.System.now().toEpochMilliseconds(), Offset(value, 0f))
         val targetVelocity = velocityTracker.calculateVelocity().x / (valueRange.endInclusive - valueRange.start)

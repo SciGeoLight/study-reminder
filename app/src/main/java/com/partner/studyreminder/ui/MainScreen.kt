@@ -108,6 +108,8 @@ import com.partner.studyreminder.alarm.AlarmScheduler
 import com.partner.studyreminder.alarm.AlarmWindow
 import com.partner.studyreminder.data.PlanItem
 import com.partner.studyreminder.data.Plans
+import com.partner.studyreminder.data.Prefs
+import com.partner.studyreminder.data.Todos
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
 import com.partner.studyreminder.ui.glass.GlassOverlay
@@ -146,7 +148,7 @@ fun MainScreen(
     onPermissions: () -> Unit,
     onSettings: () -> Unit,
     onImportClipboard: () -> Unit,
-    onOpenTodos: () -> Unit,
+    onOpenTodos: (String) -> Unit,
     onOpenFile: () -> Unit,
     onTestAlarm: () -> Unit,
     onClearDay: () -> Unit,
@@ -166,6 +168,15 @@ fun MainScreen(
     var editing by remember { mutableStateOf<PlanItem?>(null) }
     var adding by remember { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
+    var groupFilter by remember { mutableStateOf(FILTER_ALL) }
+    var pinnedGroups by remember(refreshKey) { mutableStateOf(Prefs.todoBarGroups(context)) }
+    var showGroupOverflow by remember { mutableStateOf(false) }
+    var barEpoch by remember { mutableIntStateOf(0) }
+    val todoGroups = remember(refreshKey) { Todos.of(context).groups() }
+    val todoItems = remember(refreshKey) { Todos.of(context).all() }
+    if (groupFilter != FILTER_ALL && groupFilter != FILTER_NONE && todoGroups.none { it.id == groupFilter }) {
+        groupFilter = FILTER_ALL
+    }
     var contextItem by remember { mutableStateOf<PlanItem?>(null) }
     var contextAnchor by remember { mutableStateOf<CardBounds?>(null) }
     var undo by remember { mutableStateOf<Pair<PlanItem, String>?>(null) }
@@ -259,7 +270,7 @@ fun MainScreen(
                 .nestedScroll(nestedScroll),
             contentPadding = PaddingValues(
                 top = statusPad,
-                bottom = navPad + 12.dp + 56.dp + 16.dp,
+                bottom = navPad + StudyDockMetrics.listPadding,
             ),
         ) {
             item(key = "header") {
@@ -474,50 +485,34 @@ fun MainScreen(
             )
         }
 
-        AnimatedVisibility(
+        StudyMoreMenu(
             visible = menuOpen,
-            modifier = Modifier.align(Alignment.BottomEnd),
-            enter = fadeIn(Motion.snappy()) +
-                slideInVertically(Motion.snappy()) { it / 3 },
-            exit = fadeOut(Motion.snappy()) + slideOutVertically(Motion.snappy()) { it / 3 },
-        ) {
-            Column(
-                Modifier
-                    .padding(end = 88.dp, bottom = navPad + 12.dp + 56.dp + 8.dp)
-                    .width(240.dp)
-                    .glass(backdrop, GlassTier.Float, squircle(22.dp), surface = colors.glass)
-                    .padding(vertical = 6.dp),
-            ) {
-                MenuAction(StudyIcons.FolderOpen, stringResource(R.string.open_file), colors.label) {
-                    menuOpen = false
-                    onOpenFile()
+            backdrop = backdrop,
+            onOpenFile = {
+                menuOpen = false
+                onOpenFile()
+            },
+            onTestAlarm = {
+                menuOpen = false
+                onTestAlarm()
+            },
+            onClearDay = {
+                menuOpen = false
+                if (day.items.isEmpty()) {
+                    Toast.makeText(context, "这一天已经是空的。", Toast.LENGTH_LONG).show()
+                } else {
+                    askClear = true
                 }
-                MenuDivider(colors.separator)
-                MenuAction(StudyIcons.Alarm, stringResource(R.string.test_alarm), colors.label) {
-                    menuOpen = false
-                    onTestAlarm()
-                }
-                MenuDivider(colors.separator)
-                MenuAction(StudyIcons.Delete, stringResource(R.string.clear_day), colors.red) {
-                    menuOpen = false
-                    if (day.items.isEmpty()) {
-                        Toast.makeText(context, "这一天已经是空的。", Toast.LENGTH_LONG).show()
-                    } else {
-                        askClear = true
-                    }
-                }
-                MenuDivider(colors.separator)
-                MenuAction(StudyIcons.Notifications, stringResource(R.string.menu_permissions), colors.label) {
-                    menuOpen = false
-                    onPermissions()
-                }
-                MenuDivider(colors.separator)
-                MenuAction(StudyIcons.Settings, stringResource(R.string.menu_settings), colors.label) {
-                    menuOpen = false
-                    onSettings()
-                }
-            }
-        }
+            },
+            onPermissions = {
+                menuOpen = false
+                onPermissions()
+            },
+            onSettings = {
+                menuOpen = false
+                onSettings()
+            },
+        )
 
         AnimatedVisibility(
             visible = chrome,
@@ -526,55 +521,62 @@ fun MainScreen(
                 slideInVertically(Motion.snappy()) { it },
             exit = fadeOut(Motion.snappy()) + slideOutVertically(Motion.snappy()) { it },
         ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .height(56.dp)
-                        .glass(backdrop, GlassTier.Float, Capsule()),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BarSlot(StudyIcons.Checklist, stringResource(R.string.menu_todos), onClick = onOpenTodos)
-                    BarSlot(
-                        icon = StudyIcons.ContentPaste,
-                        label = "导入",
-                        contentDescription = stringResource(R.string.import_clipboard),
-                        onClick = onImportClipboard,
-                    )
-                    BarSlot(StudyIcons.MoreHoriz, "更多") {
-                        contextItem = null
-                        contextAnchor = null
-                        menuOpen = !menuOpen
-                    }
-                }
-                Box(
-                    Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(colors.blue)
-                        .clickable(interactionSource = null, indication = null) {
-                            menuOpen = false
-                            contextItem = null
-                            contextAnchor = null
-                            editing = null
-                            adding = true
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        StudyIcons.Add,
-                        contentDescription = stringResource(R.string.add_slot),
-                        tint = Color.White,
-                    )
-                }
-            }
+            StudyBottomChrome(
+                backdrop = backdrop,
+                groups = todoGroups,
+                filter = groupFilter,
+                pinned = pinnedGroups,
+                settleKey = barEpoch,
+                // Plan rows are not grouped. The pill is the same control as 待办, and 待办 opens on this group.
+                onFilter = { groupFilter = it },
+                onMoreGroups = {
+                    menuOpen = false
+                    showGroupOverflow = true
+                },
+                onAdd = {
+                    menuOpen = false
+                    contextItem = null
+                    contextAnchor = null
+                    editing = null
+                    adding = true
+                },
+                addContentDescription = stringResource(R.string.add_slot),
+                onTodos = {
+                    menuOpen = false
+                    onOpenTodos(groupFilter)
+                },
+                onImport = {
+                    menuOpen = false
+                    onImportClipboard()
+                },
+                onMore = {
+                    contextItem = null
+                    contextAnchor = null
+                    showGroupOverflow = false
+                    menuOpen = !menuOpen
+                },
+            )
+        }
+        if (showGroupOverflow) {
+            FilterOverflowSheet(
+                groups = todoGroups,
+                todos = todoItems,
+                pinned = pinnedGroups,
+                backdrop = backdrop,
+                onPinned = { next ->
+                    pinnedGroups = next
+                    Prefs.setTodoBarGroups(context, next)
+                },
+                onPick = { id ->
+                    groupFilter = id
+                    showGroupOverflow = false
+                    barEpoch++
+                },
+                onDismiss = {
+                    showGroupOverflow = false
+                    barEpoch++
+                },
+            )
         }
         val opened = contextItem
         val anchor = contextAnchor
@@ -637,7 +639,7 @@ fun MainScreen(
                 undo = null
                 onRestore(pending.first, pending.second)
             },
-            bottom = 12.dp + 56.dp + 8.dp,
+            bottom = StudyDockMetrics.undoBottom,
         )
         val editingItem = editing
         if (adding || editingItem != null) {
@@ -720,26 +722,6 @@ private data class CardBounds(
 )
 
 @Composable
-private fun MenuAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    color: Color,
-    onClick: () -> Unit,
-) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(22.dp))
-        Text(label, color = color, fontSize = 17.sp)
-    }
-}
-
-@Composable
 private fun MenuDivider(color: Color, inset: Dp = 50.dp) {
     Box(
         Modifier
@@ -764,28 +746,6 @@ private fun ContextMenuRow(label: String, color: Color, onClick: () -> Unit) {
 }
 
 @Composable
-private fun RowScope.BarSlot(
-    icon: ImageVector,
-    label: String,
-    contentDescription: String = label,
-    onClick: () -> Unit,
-) {
-    val colors = studyColors()
-    Column(
-        Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .clickable(interactionSource = null, indication = null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(icon, contentDescription = contentDescription, tint = colors.label, modifier = Modifier.size(24.dp))
-        Spacer(Modifier.height(1.dp))
-        Text(label, color = colors.label, fontSize = 11.sp)
-    }
-}
-
-@Composable
 private fun DayChips(
     items: List<PlanItem>,
     viewing: LocalDate,
@@ -801,17 +761,19 @@ private fun DayChips(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        InfoChip(backdrop) {
+        GlassStatChip(backdrop) {
             ProgressRing(done, items.size, colors.blue, colors.track)
             Text(
                 "$done/${items.size}",
                 color = colors.label,
                 fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
                 style = Tabular,
             )
         }
-        InfoChip(backdrop, onClick = onPermissions) {
+        GlassStatChip(backdrop, onClick = onPermissions) {
             Box(
                 Modifier
                     .size(6.dp)
@@ -822,43 +784,23 @@ private fun DayChips(
                 "已排 $upcoming/${AlarmWindow.LIMIT}",
                 color = colors.label,
                 fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
                 style = Tabular,
             )
         }
-        InfoChip(backdrop) {
+        GlassStatChip(backdrop) {
             Text(
                 nextOrTotalLabel(items, viewing, today, nowMin),
                 color = colors.label,
                 fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
             )
         }
     }
-}
-
-@Composable
-private fun InfoChip(
-    backdrop: Backdrop,
-    onClick: (() -> Unit)? = null,
-    content: @Composable RowScope.() -> Unit,
-) {
-    val colors = studyColors()
-    Row(
-        Modifier
-            .glass(backdrop, GlassTier.Control, Capsule(), surface = colors.glass)
-            .then(
-                if (onClick != null) {
-                    Modifier.clickable(interactionSource = null, indication = null, onClick = onClick)
-                } else {
-                    Modifier
-                },
-            )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        content = content,
-    )
 }
 
 @Composable

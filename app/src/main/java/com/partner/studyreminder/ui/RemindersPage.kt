@@ -54,6 +54,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -99,6 +100,7 @@ import com.partner.studyreminder.data.TodoImages
 import com.partner.studyreminder.data.Todos
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
+import com.partner.studyreminder.ui.glass.GlassOverlay
 import com.partner.studyreminder.ui.glass.GlassLensBudget
 import com.partner.studyreminder.ui.glass.GlassSheet
 import com.partner.studyreminder.ui.glass.GlassTier
@@ -131,9 +133,9 @@ internal data class DraftPhoto(
     val file: File? = null,
 )
 
-private const val FILTER_ALL = "*"
-private const val FILTER_NONE = "-"
-private const val FILTER_MORE = "more"
+internal const val FILTER_ALL = "*"
+internal const val FILTER_NONE = "-"
+internal const val FILTER_MORE = "more"
 private enum class Bucket(val label: String) { OVERDUE("已过期"), TODAY("今天"), UPCOMING("即将到来"), DONE("已完成") }
 
 private enum class TileFilter(val label: String) {
@@ -221,6 +223,13 @@ internal fun TodosScreen(
     onRemoveStoredImage: (Todo, String) -> Unit,
     onPickImages: ((List<Uri>) -> Unit) -> Unit,
     onTakePhoto: ((File?) -> Unit) -> Unit,
+    initialFilter: String = FILTER_ALL,
+    onImport: () -> Unit,
+    onOpenFile: () -> Unit,
+    onTestAlarm: () -> Unit,
+    onClearDay: () -> Unit,
+    onPermissions: () -> Unit,
+    onSettings: () -> Unit,
 ) {
     val colors = studyColors()
     val view = LocalView.current
@@ -232,7 +241,7 @@ internal fun TodosScreen(
         todos = Todos.of(context).all()
         groups = Todos.of(context).groups()
     }
-    var filter by remember { mutableStateOf(FILTER_ALL) }
+    var filter by remember(initialFilter) { mutableStateOf(initialFilter) }
     var tile by remember { mutableStateOf(TileFilter.ALL) }
     var showOverflow by remember { mutableStateOf(false) }
     var barEpoch by remember { mutableIntStateOf(0) }
@@ -242,6 +251,8 @@ internal fun TodosScreen(
     var editing by remember { mutableStateOf<Todo?>(null) }
     var undo by remember { mutableStateOf<Todo?>(null) }
     var showGroups by remember { mutableStateOf(false) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var askClear by remember { mutableStateOf(false) }
     var viewer by remember { mutableStateOf<Pair<String, Int>?>(null) }
     val listState = rememberLazyListState()
     val density = LocalDensity.current
@@ -302,7 +313,7 @@ internal fun TodosScreen(
                 modifier = Modifier.fillMaxSize().testTag("reminders-list"),
                 contentPadding = PaddingValues(
                     top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 88.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + StudyDockMetrics.listPadding,
                 ),
             ) {
                 item(key = "head") {
@@ -410,33 +421,65 @@ internal fun TodosScreen(
                         .padding(8.dp),
                 )
             }
-            Row(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                SegmentedFilters(
-                    groups = groups,
-                    filter = filter,
-                    pinned = pinned,
-                    settleKey = barEpoch,
-                    backdrop = backdrop,
-                    modifier = Modifier.weight(1f),
-                    onMore = { showOverflow = true },
-                ) { filter = it }
-                GlassIconButton(
-                    onClick = { adding = true },
-                    backdrop = backdrop,
-                    modifier = Modifier.testTag("add-todo"),
-                    buttonSize = 52.dp,
-                ) {
-                    Icon(StudyIcons.Add, contentDescription = "添加待办", tint = colors.label)
-                }
+            if (menuOpen) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .clickable(interactionSource = null, indication = null) { menuOpen = false },
+                )
             }
+            StudyMoreMenu(
+                visible = menuOpen,
+                backdrop = backdrop,
+                onOpenFile = {
+                    menuOpen = false
+                    onOpenFile()
+                },
+                onTestAlarm = {
+                    menuOpen = false
+                    onTestAlarm()
+                },
+                onClearDay = {
+                    menuOpen = false
+                    askClear = true
+                },
+                onPermissions = {
+                    menuOpen = false
+                    onPermissions()
+                },
+                onSettings = {
+                    menuOpen = false
+                    onSettings()
+                },
+            )
+            StudyBottomChrome(
+                backdrop = backdrop,
+                groups = groups,
+                filter = filter,
+                pinned = pinned,
+                settleKey = barEpoch,
+                onFilter = { filter = it },
+                onMoreGroups = {
+                    menuOpen = false
+                    showOverflow = true
+                },
+                onAdd = {
+                    menuOpen = false
+                    adding = true
+                },
+                addContentDescription = "添加待办",
+                addTag = "add-todo",
+                onTodos = {},
+                onImport = {
+                    menuOpen = false
+                    onImport()
+                },
+                onMore = {
+                    showOverflow = false
+                    menuOpen = !menuOpen
+                },
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
             if (showOverflow) {
                 FilterOverflowSheet(
                     groups = groups,
@@ -466,7 +509,29 @@ internal fun TodosScreen(
                 undo?.let(onUndo)
                 undo = null
             },
+            bottom = StudyDockMetrics.undoBottom,
         )
+        if (askClear) {
+            val count = com.partner.studyreminder.data.Plans.of(context).day(today.toString()).items.size
+            GlassOverlay(backdrop, onDismiss = { askClear = false }) {
+                Text("清空这一天？", color = colors.label, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (count == 0) "今天的计划已经是空的。" else "会删掉今天的 $count 条安排，并取消对应的响铃。",
+                    color = colors.secondary,
+                    fontSize = 15.sp,
+                    lineHeight = 21.sp,
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { askClear = false }) { Text("取消", color = colors.blue) }
+                    TextButton(onClick = {
+                        askClear = false
+                        if (count > 0) onClearDay()
+                    }) { Text("清空", color = colors.red) }
+                }
+            }
+        }
         if (adding || editing != null) {
             TodoEditorSheet(
                 existing = editing,
@@ -511,16 +576,16 @@ internal fun TodosScreen(
     }
 }
 
-private data class FilterChip(val id: String, val label: String, val dot: Color?)
+internal data class FilterChip(val id: String, val label: String, val dot: Color?)
 
-private fun exposedGroups(groups: List<TodoGroup>, pinned: List<String>?): List<TodoGroup> {
+internal fun exposedGroups(groups: List<TodoGroup>, pinned: List<String>?): List<TodoGroup> {
     if (pinned == null) return groups.take(Prefs.TODO_BAR_LIMIT)
     val byId = groups.associateBy { it.id }
     return pinned.mapNotNull { byId[it] }.take(Prefs.TODO_BAR_LIMIT)
 }
 
 @Composable
-private fun SegmentedFilters(
+internal fun SegmentedFilters(
     groups: List<TodoGroup>,
     filter: String,
     pinned: List<String>?,
@@ -531,9 +596,8 @@ private fun SegmentedFilters(
     onFilter: (String) -> Unit,
 ) {
     val colors = studyColors()
-    val lightTheme = colors.label.red < 0.5f
-    val selectedColor = if (lightTheme) colors.label else Color(0xFF1C1C1E)
-    val idleColor = if (lightTheme) colors.secondary else Color.White.copy(alpha = 0.84f)
+    val selectedColor = colors.label
+    val idleColor = colors.secondary
     val exposed = exposedGroups(groups, pinned)
     val hiddenGroup = filter != FILTER_ALL && filter != FILTER_NONE && exposed.none { it.id == filter }
     val moreLabel = if (hiddenGroup) groups.firstOrNull { it.id == filter }?.name ?: "…" else "…"
@@ -587,7 +651,7 @@ private fun SegmentedFilters(
 }
 
 @Composable
-private fun FilterOverflowSheet(
+internal fun FilterOverflowSheet(
     groups: List<TodoGroup>,
     todos: List<Todo>,
     pinned: List<String>?,
@@ -872,41 +936,35 @@ private fun TodoStatChips(counts: TodoChipCounts, backdrop: Backdrop) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        StatChip(backdrop) {
-            Text("未完成", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text("${counts.open}", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        GlassStatChip(backdrop) {
+            Text("未完成", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("${counts.open}", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
-        StatChip(backdrop) {
-            Text("今天到期", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text("${counts.dueToday}", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        GlassStatChip(backdrop) {
+            Text("今天到期", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("${counts.dueToday}", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
-        StatChip(backdrop) {
-            Text("已逾期", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text(
-                "${counts.overdue}",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
+        GlassStatChip(backdrop) {
+            Text("已逾期", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Box(
+                Modifier
+                    .height(18.dp)
                     .clip(Capsule())
                     .background(colors.red)
-                    .padding(horizontal = 7.dp, vertical = 1.dp),
-            )
+                    .padding(horizontal = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "${counts.overdue}",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    lineHeight = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            }
         }
     }
-}
-
-@Composable
-private fun StatChip(backdrop: Backdrop, content: @Composable RowScope.() -> Unit) {
-    val colors = studyColors()
-    Row(
-        Modifier
-            .glass(backdrop, GlassTier.Control, Capsule(), surface = colors.glass)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        content = content,
-    )
 }
 
 @Composable

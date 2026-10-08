@@ -70,7 +70,12 @@ class MainActivity : ComponentActivity() {
                     onPermissions = { launchPush(Intent(this, PermissionActivity::class.java)) },
                     onSettings = { launchPush(Intent(this, SettingsActivity::class.java)) },
                     onImportClipboard = { importClipboard() },
-                    onOpenTodos = { launchPush(Intent(this, TodosActivity::class.java)) },
+                    onOpenTodos = { group ->
+                        launchPush(
+                            Intent(this, TodosActivity::class.java)
+                                .putExtra(TodosActivity.EXTRA_FILTER, group),
+                        )
+                    },
                     onOpenFile = {
                         openFile.launch(
                             arrayOf("text/calendar", "text/plain", "application/octet-stream", "application/ics"),
