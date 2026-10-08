@@ -9,8 +9,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -102,6 +100,7 @@ import com.partner.studyreminder.data.TodoImages
 import com.partner.studyreminder.data.Todos
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
+import com.partner.studyreminder.ui.glass.GlassUndoBar
 import com.partner.studyreminder.ui.glass.LiquidBottomTab
 import com.partner.studyreminder.ui.glass.LiquidBottomTabs
 import com.partner.studyreminder.ui.glass.LiquidPage
@@ -380,36 +379,14 @@ internal fun TodosScreen(
                 )
             }
         }
-        val pending = undo
-        AnimatedVisibility(
-            visible = pending != null && editing == null && !adding,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(Motion.snappy()) + slideInVertically { it },
-            exit = fadeOut() + slideOutVertically { it },
-        ) {
-            Row(
-                Modifier
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(start = 16.dp, end = 16.dp, bottom = 76.dp)
-                    .liquidGlass(backdrop, com.kyant.shapes.Capsule(), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
-                    .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("已删除", color = colors.label, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Text(
-                    "撤销",
-                    color = colors.blue,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 17.sp,
-                    modifier = Modifier
-                        .clickable(interactionSource = null, indication = null) {
-                            pending?.let(onUndo)
-                            undo = null
-                        }
-                        .padding(8.dp),
-                )
-            }
-        }
+        GlassUndoBar(
+            visible = undo != null && editing == null && !adding,
+            backdrop = backdrop,
+            onUndo = {
+                undo?.let(onUndo)
+                undo = null
+            },
+        )
         if (adding || editing != null) {
             TodoEditorSheet(
                 existing = editing,
