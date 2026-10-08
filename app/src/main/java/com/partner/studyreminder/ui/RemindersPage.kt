@@ -5,7 +5,6 @@ import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -127,7 +126,9 @@ import com.partner.studyreminder.ui.glass.studyColors
 import java.io.File
 import java.time.LocalDate
 import java.time.YearMonth
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -244,7 +245,7 @@ internal fun TodosScreen(
                 ),
             ) {
                 item(key = "head") {
-                    Column(Modifier.padding(horizontal = 16.dp)) {
+                    Column(Modifier.animateItem(placementSpec = Motion.smooth()).padding(horizontal = 16.dp)) {
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             GlassIconButton(onBack, backdrop, buttonSize = 36.dp) {
@@ -275,7 +276,7 @@ internal fun TodosScreen(
                             "点右下角加号写一件。",
                             color = colors.secondary,
                             fontSize = 17.sp,
-                            modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp),
+                            modifier = Modifier.animateItem(placementSpec = Motion.smooth()).padding(horizontal = 32.dp, vertical = 12.dp),
                         )
                     }
                 }
@@ -286,11 +287,12 @@ internal fun TodosScreen(
                             color = colors.label,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 8.dp),
+                            modifier = Modifier.animateItem(placementSpec = Motion.smooth()).padding(start = 20.dp, top = 8.dp, bottom = 8.dp),
                         )
                     }
                     items(rows, key = { "t-$filter-${it.id}" }) { todo ->
                         TodoRow(
+                            modifier = Modifier.animateItem(placementSpec = Motion.smooth()),
                             todo = todo,
                             group = groups.firstOrNull { it.id == todo.groupId },
                             backdrop = backdrop,
@@ -392,7 +394,7 @@ internal fun TodosScreen(
         AnimatedVisibility(
             visible = pending != null && editing == null && !adding,
             modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(spring(dampingRatio = 0.86f, stiffness = 420f)) + slideInVertically { it },
+            enter = fadeIn(Motion.snappy()) + slideInVertically { it },
             exit = fadeOut() + slideOutVertically { it },
         ) {
             Row(
@@ -708,6 +710,7 @@ private fun OverflowPickRow(label: String, dot: Color?, colors: StudyColors, onC
 
 @Composable
 private fun TodoRow(
+    modifier: Modifier = Modifier,
     todo: Todo,
     group: TodoGroup?,
     backdrop: Backdrop,
@@ -726,7 +729,7 @@ private fun TodoRow(
     val press = rememberLiquidPress(captureDrag = false)
     val shift = offset.value
     Box(
-        Modifier
+        modifier
             .padding(horizontal = 16.dp)
             .padding(bottom = 14.dp)
             .fillMaxWidth(),
@@ -774,28 +777,42 @@ private fun TodoRow(
                     press = press,
                 )
                 .liquidPressFeedback(press)
-                .pointerInput(todo.id) {
+                .pointerInput(todo.id, reveal) {
+                    val tracker = VelocityTracker()
+                    var snap: Job? = null
+                    var dragOffset = offset.value
+                    fun settle(velocity: Float, after: () -> Unit = {}) {
+                        val pending = snap
+                        snap = null
+                        scope.launch {
+                            pending?.cancel()
+                            pending?.join()
+                            offset.animateTo(0f, Motion.smooth(), initialVelocity = velocity)
+                            after()
+                        }
+                    }
                     detectHorizontalDragGestures(
-                        onHorizontalDrag = { _, delta ->
-                            scope.launch { offset.snapTo((offset.value + delta).coerceIn(-reveal, reveal)) }
+                        onDragStart = {
+                            tracker.resetTracking()
+                            dragOffset = offset.value
+                        },
+                        onHorizontalDrag = { change, delta ->
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            dragOffset = resistedDrag(dragOffset, delta, -reveal, reveal, reveal)
+                            val next = dragOffset
+                            snap?.cancel()
+                            snap = scope.launch { offset.snapTo(next) }
                         },
                         onDragEnd = {
-                            val value = offset.value
-                            scope.launch {
-                                when {
-                                    value > reveal * 0.55f -> {
-                                        offset.animateTo(0f, spring(0.5f, 300f))
-                                        onToggle()
-                                    }
-                                    value < -reveal * 0.55f -> {
-                                        offset.animateTo(0f, spring(0.5f, 300f))
-                                        onDelete()
-                                    }
-                                    else -> offset.animateTo(0f, spring(0.5f, 300f))
-                                }
+                            val velocity = tracker.calculateVelocity().x
+                            val value = dragOffset
+                            when {
+                                velocity > Motion.Fling || (abs(velocity) <= Motion.Fling && value > reveal * 0.55f) -> settle(velocity, onToggle)
+                                velocity < -Motion.Fling || (abs(velocity) <= Motion.Fling && value < -reveal * 0.55f) -> settle(velocity, onDelete)
+                                else -> settle(velocity)
                             }
                         },
-                        onDragCancel = { scope.launch { offset.animateTo(0f, spring(0.5f, 300f)) } },
+                        onDragCancel = { settle(0f) },
                     )
                 }
                 .combinedClickable(
@@ -829,8 +846,8 @@ private fun TodoRow(
             }
             AnimatedVisibility(
                 visible = expanded && (todo.note.isNotBlank() || todo.images.isNotEmpty()),
-                enter = expandVertically(spring(dampingRatio = 0.86f, stiffness = 380f)) + fadeIn(),
-                exit = shrinkVertically(spring(stiffness = 380f)) + fadeOut(),
+                enter = expandVertically(Motion.snappy()) + fadeIn(),
+                exit = shrinkVertically(Motion.snappy()) + fadeOut(),
             ) {
                 Column {
                     if (todo.note.isNotBlank()) {
@@ -858,8 +875,8 @@ private fun TodoRow(
 
 @Composable
 private fun RemindCircle(done: Boolean, accent: Color, backdrop: Backdrop, onToggle: () -> Unit) {
-    val fill by animateFloatAsState(if (done) 1f else 0f, spring(dampingRatio = 0.55f, stiffness = 380f), label = "fill")
-    val scale by animateFloatAsState(if (done) 1f else 0.6f, spring(dampingRatio = 0.5f, stiffness = 300f), label = "check")
+    val fill by animateFloatAsState(if (done) 1f else 0f, Motion.bouncy(), label = "fill")
+    val scale by animateFloatAsState(if (done) 1f else 0.6f, Motion.bouncy(), label = "check")
     Box(
         Modifier
             .size(22.dp)
@@ -933,6 +950,11 @@ private fun BoxScope.TodoEditorSheet(
     var openGroup by remember(existing?.id) { mutableStateOf(false) }
     var photoMenu by remember(existing?.id) { mutableStateOf(false) }
     var error by remember(existing?.id) { mutableStateOf<String?>(null) }
+    val view = LocalView.current
+    fun reject(message: String) {
+        error = message
+        view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+    }
     val sheetShape = UnevenRoundedRectangle(36.dp, 36.dp, 0.dp, 0.dp, RoundedCornerStyle.Continuous)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val sheetHeight = maxHeight - WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
@@ -975,11 +997,16 @@ private fun BoxScope.TodoEditorSheet(
                     .pointerInput(sheetPx) {
                         val tracker = VelocityTracker()
                         var dragOffset = offset.value
+                        var snap: Job? = null
                         fun settle(current: Float, velocity: Float) {
                             val draggedDown = current > with(density) { 96.dp.toPx() }
-                            val target = if (velocity > 900f || draggedDown) sheetPx else 0f
+                            val target = if (velocity > Motion.Fling || draggedDown) sheetPx else 0f
+                            val pending = snap
+                            snap = null
                             scope.launch {
-                                offset.animateTo(target, spring(dampingRatio = 0.82f, stiffness = 380f))
+                                pending?.cancel()
+                                pending?.join()
+                                offset.animateTo(target, Motion.snappy(), initialVelocity = velocity)
                                 if (target >= sheetPx - 1f) {
                                     photos.forEach { it.file?.delete() }
                                     onDismiss()
@@ -993,8 +1020,10 @@ private fun BoxScope.TodoEditorSheet(
                             },
                             onVerticalDrag = { change, drag ->
                                 tracker.addPosition(change.uptimeMillis, change.position)
-                                dragOffset = (dragOffset + drag).coerceIn(0f, sheetPx)
-                                scope.launch { offset.snapTo(dragOffset) }
+                                dragOffset = resistedDrag(dragOffset, drag, 0f, sheetPx, sheetPx)
+                                val next = dragOffset
+                                snap?.cancel()
+                                snap = scope.launch { offset.snapTo(next) }
                             },
                             onDragEnd = { settle(dragOffset, tracker.calculateVelocity().y) },
                             onDragCancel = { settle(dragOffset, 0f) },
@@ -1040,13 +1069,14 @@ private fun BoxScope.TodoEditorSheet(
                     modifier = Modifier
                         .clickable(interactionSource = null, indication = null) {
                             if (title.isBlank()) {
-                                error = "写上标题。"
+                                reject("写上标题。")
                                 return@clickable
                             }
                             if (end < start) {
-                                error = "结束日期不能早于开始。"
+                                reject("结束日期不能早于开始。")
                                 return@clickable
                             }
+                            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                             onSave(
                                 title.trim(),
                                 note.trim(),
@@ -1191,7 +1221,7 @@ private fun BoxScope.TodoEditorSheet(
                             photos = photos + uris.take(room).map { DraftPhoto(it.toString(), uri = it) }
                         }
                     } else {
-                        error = "最多 ${TodoImages.MAX_COUNT} 张图片。"
+                        reject("最多 ${TodoImages.MAX_COUNT} 张图片。")
                     }
                 }
                 Hairline()
@@ -1202,7 +1232,7 @@ private fun BoxScope.TodoEditorSheet(
                             if (file != null) photos = photos + DraftPhoto(file.absolutePath, file = file)
                         }
                     } else {
-                        error = "最多 ${TodoImages.MAX_COUNT} 张图片。"
+                        reject("最多 ${TodoImages.MAX_COUNT} 张图片。")
                     }
                 }
                 Spacer(Modifier.height(8.dp))

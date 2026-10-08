@@ -25,7 +25,7 @@ import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -59,6 +59,7 @@ import com.partner.studyreminder.ui.theme.edgeToEdge
 import com.partner.studyreminder.ui.theme.toast
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class ReminderActivity : ComponentActivity() {
@@ -216,21 +217,45 @@ private fun SlideToDismiss(backdrop: com.kyant.backdrop.Backdrop, onDismiss: () 
             .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
             .liquidGlass(backdrop, Capsule(), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
             .pointerInput(Unit) {
-                val max = (width - 64.dp.toPx()).coerceAtLeast(0f)
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        val dismiss = drag.value > width * 0.72f
-                        stretch = 0f
-                        scope.launch { drag.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 380f)) }
+                val tracker = VelocityTracker()
+                var snap: Job? = null
+                var dragOffset = drag.value
+                fun maxTravel(): Float = (width - 64.dp.toPx()).coerceAtLeast(0f)
+                fun settle(velocity: Float) {
+                    val max = maxTravel()
+                    val strongBack = velocity < -Motion.Fling
+                    val dismiss = !strongBack && (velocity > Motion.Fling || dragOffset > width * 0.72f)
+                    val target = if (dismiss) max else 0f
+                    val pending = snap
+                    snap = null
+                    scope.launch {
+                        pending?.cancel()
+                        pending?.join()
+                        drag.animateTo(target, Motion.snappy(), initialVelocity = velocity)
                         if (dismiss) onDismiss()
+                    }
+                }
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        tracker.resetTracking()
+                        dragOffset = drag.value
+                    },
+                    onDragEnd = {
+                        stretch = 0f
+                        settle(tracker.calculateVelocity().x)
                     },
                     onDragCancel = {
                         stretch = 0f
-                        scope.launch { drag.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 380f)) }
+                        settle(0f)
                     },
-                    onHorizontalDrag = { _, delta ->
+                    onHorizontalDrag = { change, delta ->
+                        tracker.addPosition(change.uptimeMillis, change.position)
                         stretch = (abs(delta) / 28f).coerceIn(0f, 1f)
-                        scope.launch { drag.snapTo((drag.value + delta).coerceIn(0f, max)) }
+                        val max = maxTravel()
+                        dragOffset = resistedDrag(dragOffset, delta, 0f, max, max)
+                        val next = dragOffset
+                        snap?.cancel()
+                        snap = scope.launch { drag.snapTo(next) }
                     },
                 )
             },

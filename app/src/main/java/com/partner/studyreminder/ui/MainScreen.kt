@@ -1,16 +1,23 @@
 package com.partner.studyreminder.ui
 
+import android.view.HapticFeedbackConstants
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -61,6 +68,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,8 +86,10 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -111,6 +121,7 @@ import com.partner.studyreminder.ui.glass.studyColors
 import java.time.LocalDate
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 private val Tabular = TextStyle(fontFeatureSettings = "tnum")
@@ -137,7 +148,7 @@ fun MainScreen(
     val context = LocalContext.current
     val colors = studyColors()
     val today = PlanTime.today()
-    val nowMin = PlanTime.nowMinutes()
+    val nowMin = rememberBeijingMinute()
     val day = remember(viewing, refreshKey) { Plans.of(context).day(viewing.toString()) }
     val upcoming = remember(viewing, refreshKey) { AlarmScheduler.upcomingCount(context) }
     val zoneOff = remember(refreshKey) { !MainActivity.zoneMatchesShanghai() }
@@ -148,31 +159,11 @@ fun MainScreen(
     var menuItem by remember { mutableStateOf<PlanItem?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
     var scrollingDown by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    var collapse by remember { mutableFloatStateOf(0f) }
+    var atTop by remember { mutableStateOf(true) }
+    var atEnd by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val title = if (viewing == today) "今天" else "${viewing.monthValue}月${viewing.dayOfMonth}日"
-    val weeks = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-    val subtitle = "${viewing.year}年${viewing.monthValue}月${viewing.dayOfMonth}日 ${weeks[viewing.dayOfWeek.value - 1]}"
-    val current = day.items.firstOrNull { slotState(it, day.items, viewing, today, nowMin) == SlotState.CURRENT }
-    val next = day.items.firstOrNull { slotState(it, day.items, viewing, today, nowMin) == SlotState.NEXT }
-    val pinnedHere = pinnedId?.takeIf { id -> day.items.any { it.id == id } }
-    val focusId = pinnedHere ?: (current ?: next)?.id
-    var expanded by remember(viewing, pinnedHere) { mutableStateOf(setOfNotNull(focusId)) }
-    val summary = daySummary(viewing, today, day.items, current, next, nowMin)
-    val collapseDistance = with(density) { 96.dp.toPx() }
-    val collapse by remember {
-        derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) {
-                1f
-            } else {
-                (listState.firstVisibleItemScrollOffset / collapseDistance).coerceIn(0f, 1f)
-            }
-        }
-    }
-    val atTop by remember {
-        derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 12 }
-    }
-    val atEnd by remember { derivedStateOf { !listState.canScrollForward } }
     val chrome = menuOpen || !scrollingDown || atTop || atEnd
     val iconOnly = collapse > 0.55f
     val scrimStrength = ((collapse - 0.2f) / 0.45f).coerceIn(0f, 1f)
@@ -190,13 +181,56 @@ fun MainScreen(
     val dayScope = rememberCoroutineScope()
     val dayDrag = remember { Animatable(0f) }
 
-    LaunchedEffect(viewing, focusId, pinnedHere) {
-        val index = day.items.indexOfFirst { it.id == focusId }
-        if (index >= 0 && (pinnedHere != null || index > 0)) listState.animateScrollToItem(index + 1)
-    }
-
     LiquidPage { backdrop ->
-        LazyColumn(
+        AnimatedContent(
+            targetState = viewing,
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                val forward = targetState > initialState
+                val edge = if (forward) 1 else -1
+                slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { full -> full * edge } togetherWith
+                    slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { full -> -full * edge }
+            },
+            label = "day",
+        ) { date ->
+            val slotDay = remember(date, refreshKey) { Plans.of(context).day(date.toString()) }
+            val listState = rememberLazyListState()
+            val collapseDistance = with(density) { 96.dp.toPx() }
+            val slotCollapse by remember {
+                derivedStateOf {
+                    if (listState.firstVisibleItemIndex > 0) {
+                        1f
+                    } else {
+                        (listState.firstVisibleItemScrollOffset / collapseDistance).coerceIn(0f, 1f)
+                    }
+                }
+            }
+            val slotTop by remember {
+                derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 12 }
+            }
+            val slotEnd by remember { derivedStateOf { !listState.canScrollForward } }
+            val current = slotDay.items.firstOrNull { slotState(it, slotDay.items, date, today, nowMin) == SlotState.CURRENT }
+            val next = slotDay.items.firstOrNull { slotState(it, slotDay.items, date, today, nowMin) == SlotState.NEXT }
+            val pinnedHere = pinnedId?.takeIf { id -> slotDay.items.any { it.id == id } }
+            val focusId = pinnedHere ?: (current ?: next)?.id
+            var expanded by remember(date, pinnedHere) { mutableStateOf(setOfNotNull(focusId)) }
+            val summary = daySummary(date, today, slotDay.items, current, next, nowMin)
+            val weeks = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+            val slotTitle = if (date == today) "今天" else "${date.monthValue}月${date.dayOfMonth}日"
+            val subtitle = "${date.year}年${date.monthValue}月${date.dayOfMonth}日 ${weeks[date.dayOfWeek.value - 1]}"
+            LaunchedEffect(slotCollapse, slotTop, slotEnd, date, viewing) {
+                if (date == viewing) {
+                    collapse = slotCollapse
+                    atTop = slotTop
+                    atEnd = slotEnd
+                }
+            }
+            LaunchedEffect(date, focusId, pinnedHere, viewing) {
+                if (date != viewing) return@LaunchedEffect
+                val index = slotDay.items.indexOfFirst { it.id == focusId }
+                if (index >= 0 && (pinnedHere != null || index > 0)) listState.animateScrollToItem(index + 1)
+            }
+            LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
@@ -211,6 +245,7 @@ fun MainScreen(
                 val dragAmount = (abs(dragPx) / with(density) { 96.dp.toPx() }).coerceIn(0f, 1f)
                 Column(
                     Modifier
+                        .animateItem(placementSpec = Motion.smooth())
                         .daySwipe(dayScope, dayDrag, with(density) { 120.dp.toPx() }, with(density) { 72.dp.toPx() }, onPrev, onNext)
                         .graphicsLayer {
                             translationX = dragPx * 0.45f
@@ -221,7 +256,7 @@ fun MainScreen(
                 ) {
                     Spacer(Modifier.height(48.dp))
                     Text(
-                        text = title,
+                        text = slotTitle,
                         color = colors.label,
                         fontSize = 40.sp,
                         fontWeight = FontWeight.Bold,
@@ -243,7 +278,7 @@ fun MainScreen(
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(subtitle, color = colors.secondary, fontSize = 17.sp)
-                    if (viewing != today) {
+                    if (date != today) {
                         Text(
                             text = "回到今天",
                             color = colors.blue,
@@ -254,9 +289,9 @@ fun MainScreen(
                                 .padding(top = 4.dp, bottom = 2.dp),
                         )
                     }
-                    if (day.title.isNotBlank()) {
+                    if (slotDay.title.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
-                        Text(day.title, color = colors.label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Text(slotDay.title, color = colors.label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(text = summary, color = colors.secondary, fontSize = 15.sp, lineHeight = 21.sp)
@@ -278,7 +313,7 @@ fun MainScreen(
                         )
                     }
                     Spacer(Modifier.height(18.dp))
-                    if (day.items.isEmpty()) {
+                    if (slotDay.items.isEmpty()) {
                         Text(
                             text = stringResource(R.string.empty_day),
                             color = colors.label,
@@ -292,21 +327,23 @@ fun MainScreen(
                     }
                 }
             }
-            itemsIndexed(day.items, key = { _, item -> item.id }) { _, item ->
-                val state = slotState(item, day.items, viewing, today, nowMin)
+            itemsIndexed(slotDay.items, key = { _, item -> item.id }) { _, item ->
+                val state = slotState(item, slotDay.items, date, today, nowMin)
                 TimelineRow(
                     item = item,
                     state = state,
                     expanded = item.id in expanded,
                     nowMin = nowMin,
-                    end = effectiveEnd(item, day.items),
+                    end = effectiveEnd(item, slotDay.items),
                     backdrop = backdrop,
+                    modifier = Modifier.animateItem(placementSpec = Motion.smooth()),
                     onToggle = {
                         expanded = if (item.id in expanded) expanded - item.id else expanded + item.id
                     },
                     onOpenMenu = { menuItem = item },
                 )
             }
+        }
         }
 
         if (scrimStrength > 0.01f) {
@@ -316,9 +353,9 @@ fun MainScreen(
         AnimatedVisibility(
             visible = chrome,
             modifier = Modifier.align(Alignment.TopCenter),
-            enter = fadeIn(spring(dampingRatio = 0.86f, stiffness = 420f)) +
-                slideInVertically(spring(dampingRatio = 0.86f, stiffness = 420f)) { -it },
-            exit = fadeOut(spring(stiffness = 420f)) + slideOutVertically { -it },
+            enter = fadeIn(Motion.snappy()) +
+                slideInVertically(Motion.snappy()) { -it },
+            exit = fadeOut(Motion.snappy()) + slideOutVertically { -it },
         ) {
             Row(
                 Modifier
@@ -378,8 +415,8 @@ fun MainScreen(
         AnimatedVisibility(
             visible = menuOpen,
             modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(spring(dampingRatio = 0.82f, stiffness = 380f)) +
-                slideInVertically(spring(dampingRatio = 0.82f, stiffness = 380f)) { it / 3 },
+            enter = fadeIn(Motion.snappy()) +
+                slideInVertically(Motion.snappy()) { it / 3 },
             exit = fadeOut() + slideOutVertically { it / 3 },
         ) {
             Column(
@@ -434,9 +471,9 @@ fun MainScreen(
         AnimatedVisibility(
             visible = chrome,
             modifier = Modifier.align(Alignment.BottomEnd),
-            enter = fadeIn(spring(dampingRatio = 0.86f, stiffness = 420f)) +
-                slideInVertically(spring(dampingRatio = 0.86f, stiffness = 420f)) { it },
-            exit = fadeOut(spring(stiffness = 420f)) + slideOutVertically { it },
+            enter = fadeIn(Motion.snappy()) +
+                slideInVertically(Motion.snappy()) { it },
+            exit = fadeOut(Motion.snappy()) + slideOutVertically { it },
         ) {
             Row(
                 Modifier
@@ -684,8 +721,9 @@ private fun TimelineRow(
     backdrop: Backdrop,
     onToggle: () -> Unit,
     onOpenMenu: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    TimelineBody(item, state, expanded, nowMin, end, backdrop, onToggle, onOpenMenu)
+    TimelineBody(item, state, expanded, nowMin, end, backdrop, onToggle, onOpenMenu, modifier)
 }
 
 @Composable
@@ -698,6 +736,7 @@ private fun TimelineBody(
     backdrop: Backdrop,
     onToggle: () -> Unit,
     onOpenMenu: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = studyColors()
     val press = rememberLiquidPress(captureDrag = false)
@@ -720,7 +759,7 @@ private fun TimelineBody(
         )
         .liquidPressFeedback(press)
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .padding(start = 12.dp, end = 16.dp, bottom = 14.dp)
             .height(androidx.compose.foundation.layout.IntrinsicSize.Min)
@@ -776,8 +815,8 @@ private fun TimelineBody(
             }
             AnimatedVisibility(
                 visible = expanded && item.note.isNotBlank(),
-                enter = expandVertically(spring(dampingRatio = 0.86f, stiffness = 380f)) + fadeIn(),
-                exit = shrinkVertically(spring(stiffness = 380f)) + fadeOut(),
+                enter = expandVertically(Motion.snappy()) + fadeIn(),
+                exit = shrinkVertically(Motion.snappy()) + fadeOut(),
             ) {
                 Text(
                     item.note,
@@ -812,26 +851,47 @@ private fun TimelineBody(
 
 private fun Modifier.daySwipe(
     scope: CoroutineScope,
-    offset: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+    offset: Animatable<Float, AnimationVector1D>,
     limit: Float,
     threshold: Float,
     onPrev: () -> Unit,
     onNext: () -> Unit,
 ): Modifier = pointerInput(onPrev, onNext, limit, threshold) {
+    val tracker = VelocityTracker()
+    var snap: Job? = null
+    var dragOffset = offset.value
+    fun settle(velocity: Float) {
+        val pending = snap
+        snap = null
+        scope.launch {
+            pending?.cancel()
+            pending?.join()
+            offset.animateTo(0f, Motion.smooth(), initialVelocity = velocity)
+        }
+    }
     detectHorizontalDragGestures(
+        onDragStart = {
+            tracker.resetTracking()
+            dragOffset = offset.value
+        },
         onDragEnd = {
-            val value = offset.value
-            scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 420f)) }
+            val velocity = tracker.calculateVelocity().x
+            val value = dragOffset
+            settle(velocity)
             when {
+                velocity > Motion.Fling -> onPrev()
+                velocity < -Motion.Fling -> onNext()
                 value > threshold -> onPrev()
                 value < -threshold -> onNext()
             }
         },
-        onDragCancel = {
-            scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 420f)) }
-        },
-        onHorizontalDrag = { _, delta ->
-            scope.launch { offset.snapTo((offset.value + delta).coerceIn(-limit, limit)) }
+        onDragCancel = { settle(0f) },
+        onHorizontalDrag = { change, delta ->
+            tracker.addPosition(change.uptimeMillis, change.position)
+            dragOffset = resistedDrag(dragOffset, delta, -limit, limit, limit)
+            val next = dragOffset
+            snap?.cancel()
+            snap = scope.launch { offset.snapTo(next) }
         },
     )
 }
@@ -866,6 +926,11 @@ private fun BoxScope.PlanEditor(
     var title by remember(key) { mutableStateOf(item?.title.orEmpty()) }
     var note by remember(key) { mutableStateOf(item?.note.orEmpty()) }
     var error by remember(key) { mutableStateOf<String?>(null) }
+    val view = LocalView.current
+    fun reject(message: String) {
+        error = message
+        view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+    }
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedTextColor = colors.label,
         unfocusedTextColor = colors.label,
@@ -967,7 +1032,7 @@ private fun BoxScope.PlanEditor(
                 TextButton(onClick = {
                     val start = PlanTime.parseClock(startText)
                     if (start == null || start >= 24 * 60) {
-                        error = "开始时间写成 08:40 这样。"
+                        reject("开始时间写成 08:40 这样。")
                         return@TextButton
                     }
                     val end = if (endText.isBlank()) {
@@ -975,15 +1040,16 @@ private fun BoxScope.PlanEditor(
                     } else {
                         val parsed = PlanTime.parseClock(endText)
                         if (parsed == null) {
-                            error = "结束时间写成 09:20，或留空。"
+                            reject("结束时间写成 09:20，或留空。")
                             return@TextButton
                         }
                         PlanTime.endAfter(start, parsed)
                     }
                     if (title.isBlank()) {
-                        error = "写上这一条的计划。"
+                        reject("写上这一条的计划。")
                         return@TextButton
                     }
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                     onSave(date, start, end, title.trim(), note.trim())
                 }) { Text("保存", color = colors.blue, fontWeight = FontWeight.SemiBold) }
             }
