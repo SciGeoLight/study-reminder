@@ -25,9 +25,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -48,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.BuildConfig
 import com.partner.studyreminder.data.Backgrounds
 import com.partner.studyreminder.alarm.AlarmScheduler
@@ -224,7 +222,7 @@ private fun ModeRow(
         }
         if (selected) {
             Spacer(Modifier.width(12.dp))
-            Icon(Icons.Rounded.Check, contentDescription = "已选", tint = colors.blue)
+            Icon(StudyIcons.Check, contentDescription = "已选", tint = colors.blue)
         }
     }
 }
@@ -272,7 +270,7 @@ private fun SettingsScreen(
         ) {
             Spacer(Modifier.height(8.dp))
             GlassIconButton(onBack, backdrop) {
-                Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回", tint = colors.label)
+                Icon(StudyIcons.ChevronLeft, contentDescription = "返回", tint = colors.label)
             }
             Spacer(Modifier.height(12.dp))
             Text("设置", color = colors.label, fontSize = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)

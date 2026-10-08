@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
@@ -45,6 +43,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.shapes.Capsule
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.alarm.AlarmActions
 import com.partner.studyreminder.alarm.AlarmContract
 import com.partner.studyreminder.alarm.NotificationHelper
@@ -286,7 +285,7 @@ private fun SlideToDismiss(backdrop: com.kyant.backdrop.Backdrop, onDismiss: () 
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.ChevronRight, contentDescription = "滑动关闭", tint = colors.label)
+            Icon(StudyIcons.ChevronRight, contentDescription = "滑动关闭", tint = colors.label)
         }
     }
 }

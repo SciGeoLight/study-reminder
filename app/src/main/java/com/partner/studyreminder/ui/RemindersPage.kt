@@ -50,17 +50,6 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ChevronLeft
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.PhotoCamera
-import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -105,6 +94,7 @@ import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.shapes.RoundedCornerStyle
 import com.kyant.shapes.UnevenRoundedRectangle
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.data.Prefs
 import com.partner.studyreminder.data.Todo
 import com.partner.studyreminder.data.TodoGroup
@@ -249,7 +239,7 @@ internal fun TodosScreen(
                         Spacer(Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             GlassIconButton(onBack, backdrop, buttonSize = 36.dp) {
-                                Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回", tint = colors.blue)
+                                Icon(StudyIcons.ChevronLeft, contentDescription = "返回", tint = colors.blue)
                             }
                             Spacer(Modifier.weight(1f))
                             Text(
@@ -321,7 +311,7 @@ internal fun TodosScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     GlassIconButton(onBack, backdrop, buttonSize = 36.dp) {
-                        Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回", tint = colors.blue)
+                        Icon(StudyIcons.ChevronLeft, contentDescription = "返回", tint = colors.blue)
                     }
                     Text(
                         "待办",
@@ -365,7 +355,7 @@ internal fun TodosScreen(
                     modifier = Modifier.testTag("add-todo"),
                     buttonSize = 52.dp,
                 ) {
-                    Icon(Icons.Rounded.Add, contentDescription = "添加待办", tint = colors.label)
+                    Icon(StudyIcons.Add, contentDescription = "添加待办", tint = colors.label)
                 }
             }
             if (showOverflow) {
@@ -641,12 +631,12 @@ private fun FilterOverflowSheet(
                             Box(Modifier.size(10.dp).clip(CircleShape).background(colors.dot(group.color)))
                             Spacer(Modifier.width(8.dp))
                             Text(group.name, color = colors.label, fontSize = 17.sp, modifier = Modifier.weight(1f))
-                            if (on) Icon(Icons.Rounded.Check, contentDescription = "已外露", tint = colors.blue, modifier = Modifier.size(18.dp))
+                            if (on) Icon(StudyIcons.Check, contentDescription = "已外露", tint = colors.blue, modifier = Modifier.size(18.dp))
                         }
                         if (on) {
                             val index = exposedIds.indexOf(group.id)
                             Icon(
-                                Icons.Rounded.KeyboardArrowUp,
+                                StudyIcons.KeyboardArrowUp,
                                 contentDescription = "上移",
                                 tint = colors.tertiary,
                                 modifier = Modifier.size(22.dp).clickable(interactionSource = null, indication = null) {
@@ -659,7 +649,7 @@ private fun FilterOverflowSheet(
                                 },
                             )
                             Icon(
-                                Icons.Rounded.KeyboardArrowDown,
+                                StudyIcons.KeyboardArrowDown,
                                 contentDescription = "下移",
                                 tint = colors.tertiary,
                                 modifier = Modifier.size(22.dp).clickable(interactionSource = null, indication = null) {
@@ -906,7 +896,7 @@ private fun RemindCircle(done: Boolean, accent: Color, backdrop: Backdrop, onTog
         }
         if (fill > 0.2f) {
             Icon(
-                Icons.Rounded.Check,
+                StudyIcons.Check,
                 contentDescription = "完成",
                 tint = Color.White.copy(alpha = fill),
                 modifier = Modifier.size(14.dp).graphicsLayer { scaleX = scale; scaleY = scale },
@@ -1189,7 +1179,7 @@ private fun BoxScope.TodoEditorSheet(
                                             },
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Icon(Icons.Rounded.Close, contentDescription = "移除图片", tint = Color.White, modifier = Modifier.size(14.dp))
+                                        Icon(StudyIcons.Close, contentDescription = "移除图片", tint = Color.White, modifier = Modifier.size(14.dp))
                                     }
                                 }
                             }
@@ -1203,7 +1193,7 @@ private fun BoxScope.TodoEditorSheet(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.Add, contentDescription = null, tint = colors.blue, modifier = Modifier.size(20.dp))
+                        Icon(StudyIcons.Add, contentDescription = "添加图片", tint = colors.blue, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("添加图片", color = colors.blue, fontSize = 17.sp)
                     }
@@ -1213,7 +1203,7 @@ private fun BoxScope.TodoEditorSheet(
         }
         if (photoMenu) {
             ActionSheet(backdrop, onDismiss = { photoMenu = false }) {
-                ActionRow("相册", Icons.Rounded.PhotoLibrary, colors.blue) {
+                ActionRow("相册", StudyIcons.PhotoLibrary, colors.blue) {
                     photoMenu = false
                     val room = TodoImages.MAX_COUNT - photos.size
                     if (room > 0) {
@@ -1225,7 +1215,7 @@ private fun BoxScope.TodoEditorSheet(
                     }
                 }
                 Hairline()
-                ActionRow("拍照", Icons.Rounded.PhotoCamera, colors.blue) {
+                ActionRow("拍照", StudyIcons.PhotoCamera, colors.blue) {
                     photoMenu = false
                     if (photos.size < TodoImages.MAX_COUNT) {
                         onTakePhoto { file ->
@@ -1236,7 +1226,7 @@ private fun BoxScope.TodoEditorSheet(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                ActionRow("取消", Icons.Rounded.Close, colors.label) { photoMenu = false }
+                ActionRow("取消", StudyIcons.Close, colors.label) { photoMenu = false }
             }
         }
     }
@@ -1441,7 +1431,7 @@ private fun GroupChoice(
         GroupDot(color ?: colors.tertiary, if (id == null) null else name.take(1))
         Spacer(Modifier.width(12.dp))
         Text(name, color = colors.label, fontSize = 17.sp, modifier = Modifier.weight(1f))
-        if (selected) Icon(Icons.Rounded.Check, contentDescription = "已选", tint = colors.blue, modifier = Modifier.size(18.dp))
+        if (selected) Icon(StudyIcons.Check, contentDescription = "已选", tint = colors.blue, modifier = Modifier.size(18.dp))
         if (id == null) Spacer(Modifier.width(0.dp))
     }
 }
@@ -1532,19 +1522,19 @@ private fun GroupsPage(
                     Text("${todos.count { it.groupId == group.id }}", color = colors.secondary, fontSize = 17.sp)
                     Spacer(Modifier.width(8.dp))
                     Icon(
-                        Icons.Rounded.KeyboardArrowUp,
+                        StudyIcons.KeyboardArrowUp,
                         contentDescription = "上移",
                         tint = colors.tertiary,
                         modifier = Modifier.size(22.dp).clickable(interactionSource = null, indication = null) { onMove(group.id, -1) },
                     )
                     Icon(
-                        Icons.Rounded.KeyboardArrowDown,
+                        StudyIcons.KeyboardArrowDown,
                         contentDescription = "下移",
                         tint = colors.tertiary,
                         modifier = Modifier.size(22.dp).clickable(interactionSource = null, indication = null) { onMove(group.id, 1) },
                     )
                     Icon(
-                        Icons.Rounded.Delete,
+                        StudyIcons.Delete,
                         contentDescription = "删除分组",
                         tint = colors.red,
                         modifier = Modifier.size(20.dp).clickable(interactionSource = null, indication = null) { confirm = group },
@@ -1577,17 +1567,17 @@ private fun GroupsPage(
     val deleting = confirm
     if (deleting != null) {
         ActionSheet(backdrop, onDismiss = { confirm = null }) {
-            ActionRow("移到未分组", Icons.Rounded.Check, colors.blue) {
+            ActionRow("移到未分组", StudyIcons.Check, colors.blue) {
                 confirm = null
                 onDelete(deleting.id, false)
             }
             Hairline()
-            ActionRow("连待办一起删除", Icons.Rounded.Delete, colors.red) {
+            ActionRow("连待办一起删除", StudyIcons.Delete, colors.red) {
                 confirm = null
                 onDelete(deleting.id, true)
             }
             Spacer(Modifier.height(8.dp))
-            ActionRow("取消", Icons.Rounded.Close, colors.label) { confirm = null }
+            ActionRow("取消", StudyIcons.Close, colors.label) { confirm = null }
         }
     }
     }
@@ -1622,7 +1612,7 @@ private fun ActionRow(label: String, icon: androidx.compose.ui.graphics.vector.I
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Text(label, color = tint, fontSize = 17.sp)
     }
@@ -1713,13 +1703,13 @@ private fun BoxScope.PhotoViewer(
             onClose,
             backdrop,
             modifier = Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp),
-        ) { Icon(Icons.Rounded.Close, contentDescription = "关闭", tint = studyColors().label) }
+        ) { Icon(StudyIcons.Close, contentDescription = "关闭", tint = studyColors().label) }
         if (photo.storedName != null) {
             GlassIconButton(
                 { onRemove(photo.storedName) },
                 backdrop,
                 modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp),
-            ) { Icon(Icons.Rounded.Delete, contentDescription = "移除图片", tint = studyColors().red) }
+            ) { Icon(StudyIcons.Delete, contentDescription = "移除图片", tint = studyColors().red) }
         }
     }
 }

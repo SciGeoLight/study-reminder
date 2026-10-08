@@ -29,8 +29,6 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.kyant.shapes.Capsule
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.alarm.AlarmContract
 import com.partner.studyreminder.alarm.FocusParams
 import com.partner.studyreminder.alarm.IslandNotifications
@@ -283,7 +282,7 @@ private fun PermissionScreen(
         ) {
             Spacer(Modifier.height(8.dp))
             GlassIconButton(onBack, backdrop) {
-                Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回", tint = colors.label)
+                Icon(StudyIcons.ChevronLeft, contentDescription = "返回", tint = colors.label)
             }
             Spacer(Modifier.height(12.dp))
             Text("权限", color = colors.label, fontSize = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)

@@ -47,18 +47,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Alarm
-import androidx.compose.material.icons.rounded.Checklist
-import androidx.compose.material.icons.rounded.ChevronLeft
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.ContentPaste
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.Notifications
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -101,6 +89,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.Backdrop
 import com.kyant.shapes.Capsule
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.R
 import com.partner.studyreminder.alarm.AlarmScheduler
 import com.partner.studyreminder.data.PlanItem
@@ -365,7 +354,7 @@ fun MainScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 GlassIconButton(onPrev, backdrop, buttonSize = 40.dp) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "前一天", tint = colors.label)
+                    Icon(StudyIcons.ChevronLeft, contentDescription = "前一天", tint = colors.label)
                 }
                 Box(
                     Modifier
@@ -395,7 +384,7 @@ fun MainScreen(
                     }
                 }
                 GlassIconButton(onNext, backdrop, buttonSize = 40.dp) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = "后一天", tint = colors.label)
+                    Icon(StudyIcons.ChevronRight, contentDescription = "后一天", tint = colors.label)
                 }
             }
         }
@@ -426,28 +415,28 @@ fun MainScreen(
                     .liquidGlass(backdrop, squircle(28.dp), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
                     .padding(vertical = 6.dp),
             ) {
-                MenuAction(Icons.Rounded.Checklist, stringResource(R.string.menu_todos), colors.label) {
+                MenuAction(StudyIcons.Checklist, stringResource(R.string.menu_todos), colors.label) {
                     menuOpen = false
                     onOpenTodos()
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Add, stringResource(R.string.add_slot), colors.label) {
+                MenuAction(StudyIcons.Add, stringResource(R.string.add_slot), colors.label) {
                     menuOpen = false
                     editing = null
                     adding = true
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.FolderOpen, stringResource(R.string.open_file), colors.label) {
+                MenuAction(StudyIcons.FolderOpen, stringResource(R.string.open_file), colors.label) {
                     menuOpen = false
                     onOpenFile()
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Alarm, stringResource(R.string.test_alarm), colors.label) {
+                MenuAction(StudyIcons.Alarm, stringResource(R.string.test_alarm), colors.label) {
                     menuOpen = false
                     onTestAlarm()
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Delete, stringResource(R.string.clear_day), colors.red) {
+                MenuAction(StudyIcons.Delete, stringResource(R.string.clear_day), colors.red) {
                     menuOpen = false
                     if (day.items.isEmpty()) {
                         Toast.makeText(context, "这一天已经是空的。", Toast.LENGTH_LONG).show()
@@ -456,12 +445,12 @@ fun MainScreen(
                     }
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Notifications, stringResource(R.string.menu_permissions), colors.label) {
+                MenuAction(StudyIcons.Notifications, stringResource(R.string.menu_permissions), colors.label) {
                     menuOpen = false
                     onPermissions()
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Settings, stringResource(R.string.menu_settings), colors.label) {
+                MenuAction(StudyIcons.Settings, stringResource(R.string.menu_settings), colors.label) {
                     menuOpen = false
                     onSettings()
                 }
@@ -487,7 +476,7 @@ fun MainScreen(
                     backdrop = backdrop,
                     buttonSize = 48.dp,
                 ) {
-                    Icon(Icons.Rounded.Checklist, contentDescription = stringResource(R.string.menu_todos), tint = colors.label)
+                    Icon(StudyIcons.Checklist, contentDescription = stringResource(R.string.menu_todos), tint = colors.label)
                 }
                 GlassIconButton(
                     onClick = {
@@ -497,7 +486,7 @@ fun MainScreen(
                     backdrop = backdrop,
                     buttonSize = 48.dp,
                 ) {
-                    Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.add_slot), tint = colors.label)
+                    Icon(StudyIcons.Add, contentDescription = stringResource(R.string.add_slot), tint = colors.label)
                 }
                 LiquidButton(
                     onClick = onImportClipboard,
@@ -506,7 +495,7 @@ fun MainScreen(
                     height = 48.dp,
                 ) {
                     Icon(
-                        Icons.Rounded.ContentPaste,
+                        StudyIcons.ContentPaste,
                         contentDescription = stringResource(R.string.import_clipboard),
                         tint = Color.White,
                         modifier = Modifier.size(20.dp),
@@ -525,7 +514,7 @@ fun MainScreen(
                     backdrop = backdrop,
                     buttonSize = 48.dp,
                 ) {
-                    Icon(Icons.Rounded.MoreHoriz, contentDescription = "更多", tint = colors.label)
+                    Icon(StudyIcons.MoreHoriz, contentDescription = "更多", tint = colors.label)
                 }
             }
         }
@@ -695,7 +684,7 @@ private fun MenuAction(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(22.dp))
         Text(label, color = color, fontSize = 17.sp)
     }
 }
@@ -958,7 +947,7 @@ private fun BoxScope.PlanEditor(
                     backdrop = backdrop,
                     buttonSize = 40.dp,
                 ) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "前一天", tint = colors.label)
+                    Icon(StudyIcons.ChevronLeft, contentDescription = "前一天", tint = colors.label)
                 }
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(dateTitle, color = colors.label, fontSize = 28.sp, fontWeight = FontWeight.Bold)
@@ -969,7 +958,7 @@ private fun BoxScope.PlanEditor(
                     backdrop = backdrop,
                     buttonSize = 40.dp,
                 ) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = "后一天", tint = colors.label)
+                    Icon(StudyIcons.ChevronRight, contentDescription = "后一天", tint = colors.label)
                 }
             }
             Spacer(Modifier.height(14.dp))
