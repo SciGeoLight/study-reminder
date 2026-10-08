@@ -661,7 +661,7 @@ fun MainScreen(
 }
 
 @Composable
-private fun BoxScope.TopFade(statusPad: Dp, strength: Float, colors: StudyColors) {
+internal fun BoxScope.TopFade(statusPad: Dp, strength: Float, colors: StudyColors) {
     val cover = statusPad + 46.dp
     val band = cover + 32.dp
     val image = LocalBackdropImage.current

@@ -71,6 +71,17 @@ internal fun endWhenStartMoves(start: Int, end: Int?, newStart: Int): Int? {
     return newStart + span
 }
 
+/** When [newStart] passes [end], keep the previous day span (or the same day). */
+internal fun endWhenStartDateMoves(start: LocalDate, end: LocalDate, newStart: LocalDate): LocalDate {
+    if (!newStart.isAfter(end)) return end
+    val span = java.time.temporal.ChronoUnit.DAYS.between(start, end).coerceAtLeast(0)
+    return newStart.plusDays(span)
+}
+
+/** An end picked before [start] snaps up to the start date. */
+internal fun endNotBefore(start: LocalDate, picked: LocalDate): LocalDate =
+    if (picked.isBefore(start)) start else picked
+
 @Composable
 internal fun GlassSection(backdrop: Backdrop, content: @Composable () -> Unit) {
     Column(
