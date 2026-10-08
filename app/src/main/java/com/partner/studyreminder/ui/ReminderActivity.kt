@@ -3,12 +3,23 @@ package com.partner.studyreminder.ui
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,24 +31,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -49,16 +61,18 @@ import com.partner.studyreminder.alarm.AlarmActions
 import com.partner.studyreminder.alarm.AlarmContract
 import com.partner.studyreminder.alarm.NotificationHelper
 import com.partner.studyreminder.parse.PlanTime
-import com.partner.studyreminder.ui.glass.LiquidButton
+import com.partner.studyreminder.ui.glass.GlassTier
 import com.partner.studyreminder.ui.glass.LiquidPage
-import com.partner.studyreminder.ui.glass.liquidGlass
+import com.partner.studyreminder.ui.glass.glass
 import com.partner.studyreminder.ui.glass.squircle
 import com.partner.studyreminder.ui.glass.studyColors
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.ui.theme.StudyTheme
 import com.partner.studyreminder.ui.theme.edgeToEdge
 import com.partner.studyreminder.ui.theme.toast
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class ReminderActivity : ComponentActivity() {
@@ -139,21 +153,26 @@ private fun AlarmScreen(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .liquidGlass(backdrop, squircle(32.dp), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
+                    .glass(backdrop, GlassTier.Card, squircle(32.dp))
                     .padding(horizontal = 18.dp, vertical = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Text("学习提醒", color = colors.secondary, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(12.dp))
-                Text(
-                    text = clock,
-                    color = colors.label,
-                    fontSize = 84.sp,
-                    fontWeight = FontWeight.Light,
-                    letterSpacing = (-2).sp,
-                    style = Tabular,
-                    textAlign = TextAlign.Center,
-                )
+                Box(Modifier.fillMaxWidth().height(148.dp), contentAlignment = Alignment.Center) {
+                    if (rememberSystemAnimationsEnabled()) {
+                        ExpandingRings(Modifier.fillMaxSize())
+                    }
+                    Text(
+                        text = clock,
+                        color = colors.label,
+                        fontSize = 84.sp,
+                        fontWeight = FontWeight.Light,
+                        letterSpacing = (-2).sp,
+                        style = Tabular,
+                        textAlign = TextAlign.Center,
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = headline,
@@ -177,24 +196,16 @@ private fun AlarmScreen(
                 }
             }
             Spacer(Modifier.weight(1f))
-            LiquidButton(
-                onClick = onDismiss,
-                backdrop = backdrop,
-                modifier = Modifier.fillMaxWidth(),
-                tint = colors.red,
-                height = 64.dp,
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(52.dp)
+                    .glass(backdrop, GlassTier.Control, Capsule())
+                    .clickable(interactionSource = null, indication = null, onClick = onSnooze),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("知道了", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-            }
-            Spacer(Modifier.height(12.dp))
-            LiquidButton(
-                onClick = onSnooze,
-                backdrop = backdrop,
-                modifier = Modifier.fillMaxWidth(),
-                surface = colors.glass,
-                height = 64.dp,
-            ) {
-                Text("5分钟后再提醒", color = colors.label, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                Text("5 分钟后再提醒", color = colors.label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.height(14.dp))
             SlideToDismiss(backdrop, onDismiss)
@@ -212,25 +223,49 @@ private fun SlideToDismiss(backdrop: com.kyant.backdrop.Backdrop, onDismiss: () 
     Box(
         Modifier
             .fillMaxWidth()
-            .height(64.dp)
+            .height(72.dp)
             .onSizeChanged { width = it.width.toFloat().coerceAtLeast(1f) }
-            .liquidGlass(backdrop, Capsule(), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
+            .glass(backdrop, GlassTier.Control, Capsule())
             .pointerInput(Unit) {
-                val max = (width - 64.dp.toPx()).coerceAtLeast(0f)
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        val dismiss = drag.value > width * 0.72f
-                        stretch = 0f
-                        scope.launch { drag.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 380f)) }
+                val tracker = VelocityTracker()
+                var snap: Job? = null
+                var dragOffset = drag.value
+                fun maxTravel(): Float = (width - 72.dp.toPx()).coerceAtLeast(0f)
+                fun settle(velocity: Float) {
+                    val max = maxTravel()
+                    val strongBack = velocity < -Motion.Fling
+                    val dismiss = !strongBack && (velocity > Motion.Fling || dragOffset > width * 0.72f)
+                    val target = if (dismiss) max else 0f
+                    val pending = snap
+                    snap = null
+                    scope.launch {
+                        pending?.cancel()
+                        pending?.join()
+                        drag.animateTo(target, Motion.snappy(), initialVelocity = velocity)
                         if (dismiss) onDismiss()
+                    }
+                }
+                detectHorizontalDragGestures(
+                    onDragStart = {
+                        tracker.resetTracking()
+                        dragOffset = drag.value
+                    },
+                    onDragEnd = {
+                        stretch = 0f
+                        settle(tracker.calculateVelocity().x)
                     },
                     onDragCancel = {
                         stretch = 0f
-                        scope.launch { drag.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 380f)) }
+                        settle(0f)
                     },
-                    onHorizontalDrag = { _, delta ->
+                    onHorizontalDrag = { change, delta ->
+                        tracker.addPosition(change.uptimeMillis, change.position)
                         stretch = (abs(delta) / 28f).coerceIn(0f, 1f)
-                        scope.launch { drag.snapTo((drag.value + delta).coerceIn(0f, max)) }
+                        val max = maxTravel()
+                        dragOffset = resistedDrag(dragOffset, delta, 0f, max, max)
+                        val next = dragOffset
+                        snap?.cancel()
+                        snap = scope.launch { drag.snapTo(next) }
                     },
                 )
             },
@@ -246,22 +281,56 @@ private fun SlideToDismiss(backdrop: com.kyant.backdrop.Backdrop, onDismiss: () 
             Modifier
                 .offset { IntOffset(drag.value.roundToInt(), 0) }
                 .padding(6.dp)
-                .size(52.dp)
+                .size(60.dp)
                 .graphicsLayer {
                     scaleX = 1f + stretch * 0.28f
                     scaleY = 1f - stretch * 0.1f
                 }
-                .liquidGlass(
-                    backdrop,
-                    androidx.compose.foundation.shape.CircleShape,
-                    Color.White.copy(alpha = 0.55f),
-                    blurRadius = 2.dp,
-                    refraction = 16.dp + 12.dp * stretch,
-                    clampLens = false,
-                ),
+                .glass(backdrop, GlassTier.Control, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Rounded.ChevronRight, contentDescription = "滑动关闭", tint = colors.label)
+            Icon(StudyIcons.ChevronRight, contentDescription = "滑动关闭", tint = colors.label)
+        }
+    }
+}
+
+@Composable
+private fun rememberSystemAnimationsEnabled(): Boolean {
+    val context = LocalContext.current
+    return remember {
+        runCatching {
+            val resolver = context.contentResolver
+            systemAnimationsEnabled(
+                Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f),
+                Settings.Global.getFloat(resolver, Settings.Global.TRANSITION_ANIMATION_SCALE, 1f),
+            )
+        }.getOrDefault(true)
+    }
+}
+
+@Composable
+private fun ExpandingRings(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition()
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4_000, easing = LinearEasing),
+        ),
+    )
+    Canvas(modifier) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val maxRadius = size.minDimension / 2f
+        val stroke = Stroke(width = 2.dp.toPx())
+        repeat(2) { index ->
+            val shifted = phase + index * 0.5f
+            val progress = if (shifted >= 1f) shifted - 1f else shifted
+            drawCircle(
+                color = Color.White.copy(alpha = 0.08f),
+                radius = maxRadius * (0.28f + 0.72f * progress),
+                center = center,
+                style = stroke,
+            )
         }
     }
 }

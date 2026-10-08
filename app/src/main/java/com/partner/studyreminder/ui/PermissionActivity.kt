@@ -13,6 +13,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -23,14 +24,16 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronLeft
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,20 +42,25 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.kyant.shapes.Capsule
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.alarm.AlarmContract
 import com.partner.studyreminder.alarm.FocusParams
 import com.partner.studyreminder.alarm.IslandNotifications
 import com.partner.studyreminder.data.Prefs
 import com.partner.studyreminder.ui.glass.GlassIconButton
+import com.partner.studyreminder.ui.glass.GlassTier
 import com.partner.studyreminder.ui.glass.LiquidButton
 import com.partner.studyreminder.ui.glass.LiquidPage
-import com.partner.studyreminder.ui.glass.liquidGlass
+import com.partner.studyreminder.ui.glass.glass
 import com.partner.studyreminder.ui.glass.squircle
 import com.partner.studyreminder.ui.glass.studyColors
 import com.partner.studyreminder.ui.theme.StudyTheme
@@ -68,6 +76,7 @@ class PermissionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installPush()
         edgeToEdge()
         setContent {
             StudyTheme {
@@ -112,10 +121,10 @@ class PermissionActivity : ComponentActivity() {
                         ),
                     ),
                     doneLabel = if (Prefs.sawPermissions(this)) "完成" else "进入应用",
-                    onBack = { finish() },
+                    onBack = { finishPush() },
                     onDone = {
                         Prefs.setSawPermissions(this, true)
-                        finish()
+                        finishPush()
                     },
                 )
             }
@@ -271,6 +280,8 @@ private fun PermissionScreen(
 ) {
     val colors = studyColors()
     val visibleRows = if (refreshKey >= 0) rows else emptyList()
+    val ready = visibleRows.count { it.ok }
+    val total = visibleRows.size
     LiquidPage { backdrop ->
         Column(
             Modifier
@@ -283,11 +294,42 @@ private fun PermissionScreen(
         ) {
             Spacer(Modifier.height(8.dp))
             GlassIconButton(onBack, backdrop) {
-                Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回", tint = colors.label)
+                Icon(StudyIcons.ChevronLeft, contentDescription = "返回", tint = colors.label)
             }
             Spacer(Modifier.height(12.dp))
-            Text("权限", color = colors.label, fontSize = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
-            Spacer(Modifier.height(6.dp))
+            Text("权限", color = colors.label, fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
+            Spacer(Modifier.height(16.dp))
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(120.dp), contentAlignment = Alignment.Center) {
+                    Canvas(Modifier.fillMaxSize().padding(6.dp)) {
+                        val stroke = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round)
+                        drawArc(
+                            color = colors.track,
+                            startAngle = -90f,
+                            sweepAngle = 360f,
+                            useCenter = false,
+                            style = stroke,
+                        )
+                        val sweep = if (total == 0) 0f else 360f * ready / total
+                        if (sweep > 0f) {
+                            drawArc(
+                                color = if (ready == total) colors.green else colors.blue,
+                                startAngle = -90f,
+                                sweepAngle = sweep,
+                                useCenter = false,
+                                style = stroke,
+                            )
+                        }
+                    }
+                    Text(
+                        "$ready/$total",
+                        color = colors.label,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
             Text(
                 text = "可靠响铃需要下面几项。逐项打开，状态变成绿色后再用。导入之后，即使应用没打开，到点也会响。",
                 color = colors.secondary,
@@ -302,51 +344,73 @@ private fun PermissionScreen(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .liquidGlass(backdrop, squircle(28.dp), colors.glass, blurRadius = 2.dp, refraction = 24.dp),
+                    .glass(backdrop, GlassTier.Card, squircle(22.dp)),
             ) {
                 visibleRows.forEachIndexed { index, row ->
-                    Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                    val autostart = row.secondary != null
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 64.dp)
+                            .clickable(interactionSource = null, indication = null, onClick = row.onAction)
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        PermMark(ok = row.ok, unknown = autostart && !row.ok)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
                             Text(
                                 row.title,
                                 color = colors.label,
                                 fontSize = 17.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.weight(1f),
                             )
-                            StatusPill(ok = row.ok, backdrop = backdrop)
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Text(row.hint, color = colors.secondary, fontSize = 14.sp, lineHeight = 20.sp)
-                        Spacer(Modifier.height(8.dp))
-                        Row {
                             Text(
-                                text = row.action,
-                                color = colors.blue,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .clickable(onClick = row.onAction)
-                                    .padding(top = 4.dp, bottom = 4.dp, end = 16.dp),
+                                row.hint,
+                                color = colors.secondary,
+                                fontSize = 13.sp,
+                                lineHeight = 17.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
                             )
-                            if (row.secondary != null && row.onSecondary != null) {
-                                Text(
-                                    text = row.secondary,
-                                    color = colors.blue,
-                                    fontSize = 16.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier
-                                        .clickable(onClick = row.onSecondary)
-                                        .padding(vertical = 4.dp),
-                                )
-                            }
                         }
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            permStatus(row),
+                            color = when {
+                                row.ok -> colors.green
+                                autostart -> colors.secondary
+                                else -> colors.red
+                            },
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Icon(
+                            StudyIcons.ChevronRight,
+                            contentDescription = null,
+                            tint = colors.tertiary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                    val confirmLabel = row.secondary
+                    val confirm = row.onSecondary
+                    if (confirmLabel != null && confirm != null) {
+                        Text(
+                            text = confirmLabel,
+                            color = colors.blue,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .padding(start = 56.dp, bottom = 8.dp)
+                                .clickable(interactionSource = null, indication = null, onClick = confirm)
+                                .padding(top = 4.dp, bottom = 4.dp, end = 12.dp),
+                        )
                     }
                     if (index != visibleRows.lastIndex) {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .padding(start = 16.dp)
+                                .padding(start = 56.dp)
                                 .height(0.5.dp)
                                 .background(colors.separator),
                         )
@@ -367,24 +431,40 @@ private fun PermissionScreen(
     }
 }
 
+private fun permStatus(row: PermRow): String {
+    val autostart = row.secondary != null
+    return when {
+        autostart && row.ok -> "已允许"
+        autostart -> "未确认"
+        row.ok -> "已开启"
+        else -> "未开启"
+    }
+}
+
 @Composable
-private fun StatusPill(ok: Boolean, backdrop: com.kyant.backdrop.Backdrop) {
+private fun PermMark(ok: Boolean, unknown: Boolean) {
     val colors = studyColors()
-    val color = if (ok) colors.green else colors.red
-    Text(
-        text = if (ok) "已开启" else "未开启",
-        color = color,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier
-            .liquidGlass(
-                backdrop = backdrop,
-                shape = Capsule(),
-                surface = color.copy(alpha = 0.22f),
-                blurRadius = 2.dp,
-                refraction = 6.dp,
-                chromatic = false,
+    val fill = when {
+        ok -> colors.green
+        unknown -> Color(0xFF8E8E93)
+        else -> colors.red
+    }
+    Box(
+        Modifier
+            .size(28.dp)
+            .clip(CircleShape)
+            .background(fill),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (ok) {
+            Icon(StudyIcons.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+        } else {
+            Text(
+                if (unknown) "?" else "!",
+                color = Color.White,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
             )
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-    )
+        }
+    }
 }

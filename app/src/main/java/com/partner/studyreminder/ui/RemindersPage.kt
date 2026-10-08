@@ -5,26 +5,27 @@ import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -41,7 +42,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -51,21 +52,11 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ChevronLeft
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.KeyboardArrowDown
-import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.PhotoCamera
-import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -84,6 +75,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -98,14 +90,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.Backdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.effects.vibrancy
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.RoundedCornerStyle
-import com.kyant.shapes.UnevenRoundedRectangle
+import com.kyant.shapes.Capsule
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.data.Prefs
 import com.partner.studyreminder.data.Todo
 import com.partner.studyreminder.data.TodoGroup
@@ -113,6 +99,12 @@ import com.partner.studyreminder.data.TodoImages
 import com.partner.studyreminder.data.Todos
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
+import com.partner.studyreminder.ui.glass.GlassLensBudget
+import com.partner.studyreminder.ui.glass.GlassSheet
+import com.partner.studyreminder.ui.glass.GlassTier
+import com.partner.studyreminder.ui.glass.SheetHeader
+import com.partner.studyreminder.ui.glass.GlassUndoBar
+import com.partner.studyreminder.ui.glass.glass
 import com.partner.studyreminder.ui.glass.LiquidBottomTab
 import com.partner.studyreminder.ui.glass.LiquidBottomTabs
 import com.partner.studyreminder.ui.glass.LiquidPage
@@ -126,8 +118,9 @@ import com.partner.studyreminder.ui.glass.squircle
 import com.partner.studyreminder.ui.glass.studyColors
 import java.io.File
 import java.time.LocalDate
-import java.time.YearMonth
+import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -142,6 +135,13 @@ private const val FILTER_ALL = "*"
 private const val FILTER_NONE = "-"
 private const val FILTER_MORE = "more"
 private enum class Bucket(val label: String) { OVERDUE("已过期"), TODAY("今天"), UPCOMING("即将到来"), DONE("已完成") }
+
+private enum class TileFilter(val label: String) {
+    TODAY("今天"),
+    OVERDUE("已逾期"),
+    ALL("全部"),
+    DONE("已完成"),
+}
 private enum class DateTarget { START, END, REMIND }
 
 private fun bucketOf(todo: Todo, today: LocalDate): Bucket {
@@ -155,14 +155,54 @@ private fun bucketOf(todo: Todo, today: LocalDate): Bucket {
     }
 }
 
+internal data class TodoChipCounts(val open: Int, val dueToday: Int, val overdue: Int)
+
+/** Chip row under the title. Counts come from [bucketOf] on the list currently shown. */
+internal fun todoChipCounts(todos: List<Todo>, today: LocalDate): TodoChipCounts {
+    var open = 0
+    var dueToday = 0
+    var overdue = 0
+    for (todo in todos) {
+        when (bucketOf(todo, today)) {
+            Bucket.DONE -> Unit
+            Bucket.TODAY -> {
+                open++
+                dueToday++
+            }
+            Bucket.OVERDUE -> {
+                open++
+                overdue++
+            }
+            Bucket.UPCOMING -> open++
+        }
+    }
+    return TodoChipCounts(open, dueToday, overdue)
+}
+
+internal data class TodoTileCounts(val today: Int, val overdue: Int, val all: Int, val done: Int)
+
+/** Tile numbers follow [bucketOf] on the group-filtered list. 全部 counts every item in that list. */
+internal fun todoTileCounts(todos: List<Todo>, today: LocalDate): TodoTileCounts {
+    var todayCount = 0
+    var overdue = 0
+    var done = 0
+    for (todo in todos) {
+        when (bucketOf(todo, today)) {
+            Bucket.TODAY -> todayCount++
+            Bucket.OVERDUE -> overdue++
+            Bucket.DONE -> done++
+            Bucket.UPCOMING -> Unit
+        }
+    }
+    return TodoTileCounts(todayCount, overdue, todos.size, done)
+}
+
 private fun StudyColors.dot(color: String): Color = when (color) {
     "green" -> green
     "orange" -> orange
     "red" -> red
     else -> blue
 }
-
-private fun dateLabel(date: LocalDate): String = "${date.monthValue}月${date.dayOfMonth}日"
 
 @Composable
 internal fun TodosScreen(
@@ -193,6 +233,7 @@ internal fun TodosScreen(
         groups = Todos.of(context).groups()
     }
     var filter by remember { mutableStateOf(FILTER_ALL) }
+    var tile by remember { mutableStateOf(TileFilter.ALL) }
     var showOverflow by remember { mutableStateOf(false) }
     var barEpoch by remember { mutableIntStateOf(0) }
     var pinned by remember { mutableStateOf(Prefs.todoBarGroups(context)) }
@@ -203,15 +244,36 @@ internal fun TodosScreen(
     var showGroups by remember { mutableStateOf(false) }
     var viewer by remember { mutableStateOf<Pair<String, Int>?>(null) }
     val listState = rememberLazyListState()
-    val collapsed = listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 36
-    val visible = todos.filter { todo ->
+    val density = LocalDensity.current
+    val collapseDistance = with(density) { 96.dp.toPx() }
+    val collapse by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) {
+                1f
+            } else {
+                (listState.firstVisibleItemScrollOffset / collapseDistance).coerceIn(0f, 1f)
+            }
+        }
+    }
+    val scrimStrength = ((collapse - 0.2f) / 0.45f).coerceIn(0f, 1f)
+    val statusPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val grouped = todos.filter { todo ->
         when (filter) {
             FILTER_ALL -> true
             FILTER_NONE -> todo.groupId == null
             else -> todo.groupId == filter
         }
     }
-    val openCount = visible.count { !it.done }
+    val chipCounts = todoChipCounts(grouped, today)
+    val tileCounts = todoTileCounts(grouped, today)
+    val visible = grouped.filter { todo ->
+        when (tile) {
+            TileFilter.ALL -> true
+            TileFilter.TODAY -> bucketOf(todo, today) == Bucket.TODAY
+            TileFilter.OVERDUE -> bucketOf(todo, today) == Bucket.OVERDUE
+            TileFilter.DONE -> bucketOf(todo, today) == Bucket.DONE
+        }
+    }
     val sections = Bucket.entries.map { bucket ->
         bucket to visible.filter { bucketOf(it, today) == bucket }
             .sortedWith(compareBy({ it.endDate }, { it.startDate }, { it.title }))
@@ -244,56 +306,59 @@ internal fun TodosScreen(
                 ),
             ) {
                 item(key = "head") {
-                    Column(Modifier.padding(horizontal = 16.dp)) {
-                        Spacer(Modifier.height(4.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            GlassIconButton(onBack, backdrop, buttonSize = 36.dp) {
-                                Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回", tint = colors.blue)
-                            }
-                            Spacer(Modifier.weight(1f))
-                            Text(
-                                "分组",
-                                color = colors.blue,
-                                fontSize = 17.sp,
-                                modifier = Modifier
-                                    .clickable(interactionSource = null, indication = null) { showGroups = true }
-                                    .padding(8.dp),
-                            )
-                        }
-                        Text("待办", color = colors.label, fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.4).sp)
+                    Column(Modifier.animateItem(placementSpec = Motion.smooth()).padding(horizontal = 20.dp)) {
+                        Spacer(Modifier.height(56.dp))
                         Text(
-                            if (visible.isEmpty()) "没有待办" else "未完成 $openCount 件",
-                            color = colors.secondary,
-                            fontSize = 13.sp,
+                            "待办",
+                            color = colors.label,
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.6).sp,
                         )
+                        Spacer(Modifier.height(12.dp))
+                        TodoTiles(
+                            counts = tileCounts,
+                            selected = tile,
+                            backdrop = backdrop,
+                            onSelect = { next ->
+                                tile = if (next == tile && next != TileFilter.ALL) TileFilter.ALL else next
+                            },
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        TodoStatChips(chipCounts, backdrop)
                         Spacer(Modifier.height(8.dp))
                     }
                 }
                 if (visible.isEmpty()) {
-                    item(key = "empty") {
+                    item(key = "empty-$tile") {
                         Text(
-                            "点右下角加号写一件。",
+                            if (grouped.isEmpty()) "点右下角加号写一件。" else "这里还没有这一类。",
                             color = colors.secondary,
                             fontSize = 17.sp,
-                            modifier = Modifier.padding(horizontal = 32.dp, vertical = 12.dp),
+                            modifier = Modifier.animateItem(placementSpec = Motion.smooth()).padding(horizontal = 32.dp, vertical = 12.dp),
                         )
                     }
                 }
+                var rowOrdinal = 0
                 sections.forEach { (bucket, rows) ->
-                    item(key = "h-${filter}-${bucket.name}") {
+                    item(key = "h-${filter}-${tile.name}-${bucket.name}") {
                         Text(
                             bucket.label,
                             color = colors.label,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(start = 20.dp, top = 8.dp, bottom = 8.dp),
+                            modifier = Modifier.animateItem(placementSpec = Motion.smooth()).padding(start = 20.dp, top = 8.dp, bottom = 8.dp),
                         )
                     }
-                    items(rows, key = { "t-$filter-${it.id}" }) { todo ->
+                    val lensBase = rowOrdinal
+                    rowOrdinal += rows.size
+                    itemsIndexed(rows, key = { _, todo -> "t-$filter-${tile.name}-${todo.id}" }) { index, todo ->
                         TodoRow(
+                            modifier = Modifier.animateItem(placementSpec = Motion.smooth()),
                             todo = todo,
                             group = groups.firstOrNull { it.id == todo.groupId },
                             backdrop = backdrop,
+                            lensEnabled = lensBase + index < GlassLensBudget,
                             onToggle = {
                                 view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                                 onToggle(todo)
@@ -308,36 +373,42 @@ internal fun TodosScreen(
                     }
                 }
             }
-            if (collapsed) {
-                Row(
-                    Modifier
-                        .align(Alignment.TopCenter)
-                        .fillMaxWidth()
-                        .background(colors.glass.copy(alpha = 0.92f))
-                        .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    GlassIconButton(onBack, backdrop, buttonSize = 36.dp) {
-                        Icon(Icons.Rounded.ChevronLeft, contentDescription = "返回", tint = colors.blue)
-                    }
-                    Text(
-                        "待办",
-                        color = colors.label,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                    )
-                    Text(
-                        "分组",
-                        color = colors.blue,
-                        fontSize = 17.sp,
-                        modifier = Modifier
-                            .clickable(interactionSource = null, indication = null) { showGroups = true }
-                            .padding(8.dp),
-                    )
+            if (scrimStrength > 0.01f) {
+                TopFade(statusPad = statusPad, strength = scrimStrength, colors = colors)
+            }
+            Row(
+                Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                GlassIconButton(onBack, backdrop) {
+                    Icon(StudyIcons.ChevronLeft, contentDescription = "返回", tint = colors.label)
                 }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                    if (collapse > 0.62f) {
+                        Text(
+                            "待办",
+                            color = colors.label,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier
+                                .graphicsLayer { alpha = ((collapse - 0.62f) / 0.38f).coerceIn(0f, 1f) }
+                                .liquidGlass(backdrop, Capsule(), colors.glass, blurRadius = 6.dp, refraction = 12.dp)
+                                .padding(horizontal = 14.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+                Text(
+                    "分组",
+                    color = colors.blue,
+                    fontSize = 17.sp,
+                    modifier = Modifier
+                        .clickable(interactionSource = null, indication = null) { showGroups = true }
+                        .padding(8.dp),
+                )
             }
             Row(
                 Modifier
@@ -363,7 +434,7 @@ internal fun TodosScreen(
                     modifier = Modifier.testTag("add-todo"),
                     buttonSize = 52.dp,
                 ) {
-                    Icon(Icons.Rounded.Add, contentDescription = "添加待办", tint = colors.label)
+                    Icon(StudyIcons.Add, contentDescription = "添加待办", tint = colors.label)
                 }
             }
             if (showOverflow) {
@@ -388,36 +459,14 @@ internal fun TodosScreen(
                 )
             }
         }
-        val pending = undo
-        AnimatedVisibility(
-            visible = pending != null && editing == null && !adding,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(spring(dampingRatio = 0.86f, stiffness = 420f)) + slideInVertically { it },
-            exit = fadeOut() + slideOutVertically { it },
-        ) {
-            Row(
-                Modifier
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(start = 16.dp, end = 16.dp, bottom = 76.dp)
-                    .liquidGlass(backdrop, com.kyant.shapes.Capsule(), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
-                    .padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("已删除", color = colors.label, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                Text(
-                    "撤销",
-                    color = colors.blue,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 17.sp,
-                    modifier = Modifier
-                        .clickable(interactionSource = null, indication = null) {
-                            pending?.let(onUndo)
-                            undo = null
-                        }
-                        .padding(8.dp),
-                )
-            }
-        }
+        GlassUndoBar(
+            visible = undo != null && editing == null && !adding,
+            backdrop = backdrop,
+            onUndo = {
+                undo?.let(onUndo)
+                undo = null
+            },
+        )
         if (adding || editing != null) {
             TodoEditorSheet(
                 existing = editing,
@@ -639,12 +688,12 @@ private fun FilterOverflowSheet(
                             Box(Modifier.size(10.dp).clip(CircleShape).background(colors.dot(group.color)))
                             Spacer(Modifier.width(8.dp))
                             Text(group.name, color = colors.label, fontSize = 17.sp, modifier = Modifier.weight(1f))
-                            if (on) Icon(Icons.Rounded.Check, contentDescription = "已外露", tint = colors.blue, modifier = Modifier.size(18.dp))
+                            if (on) Icon(StudyIcons.Check, contentDescription = "已外露", tint = colors.blue, modifier = Modifier.size(18.dp))
                         }
                         if (on) {
                             val index = exposedIds.indexOf(group.id)
                             Icon(
-                                Icons.Rounded.KeyboardArrowUp,
+                                StudyIcons.KeyboardArrowUp,
                                 contentDescription = "上移",
                                 tint = colors.tertiary,
                                 modifier = Modifier.size(22.dp).clickable(interactionSource = null, indication = null) {
@@ -657,7 +706,7 @@ private fun FilterOverflowSheet(
                                 },
                             )
                             Icon(
-                                Icons.Rounded.KeyboardArrowDown,
+                                StudyIcons.KeyboardArrowDown,
                                 contentDescription = "下移",
                                 tint = colors.tertiary,
                                 modifier = Modifier.size(22.dp).clickable(interactionSource = null, indication = null) {
@@ -707,10 +756,166 @@ private fun OverflowPickRow(label: String, dot: Color?, colors: StudyColors, onC
 }
 
 @Composable
+private fun TodoTiles(
+    counts: TodoTileCounts,
+    selected: TileFilter,
+    backdrop: Backdrop,
+    onSelect: (TileFilter) -> Unit,
+) {
+    val colors = studyColors()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TodoTile(
+                filter = TileFilter.TODAY,
+                count = counts.today,
+                tint = colors.orange,
+                icon = StudyIcons.Alarm,
+                selected = selected == TileFilter.TODAY,
+                backdrop = backdrop,
+                onClick = { onSelect(TileFilter.TODAY) },
+                modifier = Modifier.weight(1f),
+            )
+            TodoTile(
+                filter = TileFilter.OVERDUE,
+                count = counts.overdue,
+                tint = colors.red,
+                icon = null,
+                selected = selected == TileFilter.OVERDUE,
+                backdrop = backdrop,
+                onClick = { onSelect(TileFilter.OVERDUE) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TodoTile(
+                filter = TileFilter.ALL,
+                count = counts.all,
+                tint = colors.blue,
+                icon = StudyIcons.Checklist,
+                selected = selected == TileFilter.ALL,
+                backdrop = backdrop,
+                onClick = { onSelect(TileFilter.ALL) },
+                modifier = Modifier.weight(1f),
+            )
+            TodoTile(
+                filter = TileFilter.DONE,
+                count = counts.done,
+                tint = colors.green,
+                icon = StudyIcons.Check,
+                selected = selected == TileFilter.DONE,
+                backdrop = backdrop,
+                onClick = { onSelect(TileFilter.DONE) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TodoTile(
+    filter: TileFilter,
+    count: Int,
+    tint: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    selected: Boolean,
+    backdrop: Backdrop,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = studyColors()
+    val shape = squircle(22.dp)
+    Box(
+        modifier
+            .height(64.dp)
+            .testTag("tile-${filter.label}")
+            .glass(backdrop, GlassTier.Card, shape)
+            .then(if (selected) Modifier.border(1.5.dp, colors.blue, shape) else Modifier)
+            .clickable(interactionSource = null, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Row(Modifier.align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(tint),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (icon != null) {
+                    Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                } else {
+                    Text("!", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Text(
+            "$count",
+            color = colors.label,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
+        Text(
+            filter.label,
+            color = colors.label,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.align(Alignment.BottomStart),
+        )
+    }
+}
+
+@Composable
+private fun TodoStatChips(counts: TodoChipCounts, backdrop: Backdrop) {
+    val colors = studyColors()
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatChip(backdrop) {
+            Text("未完成", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("${counts.open}", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+        StatChip(backdrop) {
+            Text("今天到期", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("${counts.dueToday}", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        }
+        StatChip(backdrop) {
+            Text("已逾期", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                "${counts.overdue}",
+                color = Color.White,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(Capsule())
+                    .background(colors.red)
+                    .padding(horizontal = 7.dp, vertical = 1.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatChip(backdrop: Backdrop, content: @Composable RowScope.() -> Unit) {
+    val colors = studyColors()
+    Row(
+        Modifier
+            .glass(backdrop, GlassTier.Control, Capsule(), surface = colors.glass)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
+}
+
+@Composable
 private fun TodoRow(
+    modifier: Modifier = Modifier,
     todo: Todo,
     group: TodoGroup?,
     backdrop: Backdrop,
+    lensEnabled: Boolean = true,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
@@ -726,7 +931,7 @@ private fun TodoRow(
     val press = rememberLiquidPress(captureDrag = false)
     val shift = offset.value
     Box(
-        Modifier
+        modifier
             .padding(horizontal = 16.dp)
             .padding(bottom = 14.dp)
             .fillMaxWidth(),
@@ -764,38 +969,44 @@ private fun TodoRow(
             Modifier
                 .offset { IntOffset(shift.roundToInt(), 0) }
                 .fillMaxWidth()
-                .liquidGlass(
-                    backdrop = backdrop,
-                    shape = squircle(26.dp),
-                    surface = colors.glass,
-                    blurRadius = 2.dp,
-                    refraction = 24.dp,
-                    chromatic = true,
-                    press = press,
-                )
+                .glass(backdrop, GlassTier.Card, squircle(26.dp), press = press, lensEnabled = lensEnabled)
                 .liquidPressFeedback(press)
-                .pointerInput(todo.id) {
+                .pointerInput(todo.id, reveal) {
+                    val tracker = VelocityTracker()
+                    var snap: Job? = null
+                    var dragOffset = offset.value
+                    fun settle(velocity: Float, after: () -> Unit = {}) {
+                        val pending = snap
+                        snap = null
+                        scope.launch {
+                            pending?.cancel()
+                            pending?.join()
+                            offset.animateTo(0f, Motion.smooth(), initialVelocity = velocity)
+                            after()
+                        }
+                    }
                     detectHorizontalDragGestures(
-                        onHorizontalDrag = { _, delta ->
-                            scope.launch { offset.snapTo((offset.value + delta).coerceIn(-reveal, reveal)) }
+                        onDragStart = {
+                            tracker.resetTracking()
+                            dragOffset = offset.value
+                        },
+                        onHorizontalDrag = { change, delta ->
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            dragOffset = resistedDrag(dragOffset, delta, -reveal, reveal, reveal)
+                            val next = dragOffset
+                            snap?.cancel()
+                            snap = scope.launch { offset.snapTo(next) }
                         },
                         onDragEnd = {
-                            val value = offset.value
-                            scope.launch {
-                                when {
-                                    value > reveal * 0.55f -> {
-                                        offset.animateTo(0f, spring(0.5f, 300f))
-                                        onToggle()
-                                    }
-                                    value < -reveal * 0.55f -> {
-                                        offset.animateTo(0f, spring(0.5f, 300f))
-                                        onDelete()
-                                    }
-                                    else -> offset.animateTo(0f, spring(0.5f, 300f))
-                                }
+                            val velocity = tracker.calculateVelocity().x
+                            val value = dragOffset
+                            when {
+                                velocity > Motion.Fling || (abs(velocity) <= Motion.Fling && value > reveal * 0.55f) -> settle(velocity, onToggle)
+                                velocity < -Motion.Fling || (abs(velocity) <= Motion.Fling && value < -reveal * 0.55f) -> settle(velocity, onDelete)
+                                else -> settle(velocity)
                             }
                         },
-                        onDragCancel = { scope.launch { offset.animateTo(0f, spring(0.5f, 300f)) } },
+                        onDragCancel = { settle(0f) },
                     )
                 }
                 .combinedClickable(
@@ -807,7 +1018,7 @@ private fun TodoRow(
                 .padding(horizontal = 16.dp, vertical = 16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RemindCircle(todo.done, accent, backdrop, onToggle)
+                RemindCircle(todo.done, accent, onToggle)
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -829,8 +1040,8 @@ private fun TodoRow(
             }
             AnimatedVisibility(
                 visible = expanded && (todo.note.isNotBlank() || todo.images.isNotEmpty()),
-                enter = expandVertically(spring(dampingRatio = 0.86f, stiffness = 380f)) + fadeIn(),
-                exit = shrinkVertically(spring(stiffness = 380f)) + fadeOut(),
+                enter = expandVertically(Motion.snappy()) + fadeIn(),
+                exit = shrinkVertically(Motion.snappy()) + fadeOut(),
             ) {
                 Column {
                     if (todo.note.isNotBlank()) {
@@ -839,12 +1050,12 @@ private fun TodoRow(
                             color = if (todo.done) colors.tertiary else colors.secondary,
                             fontSize = 15.sp,
                             lineHeight = 20.sp,
-                            modifier = Modifier.padding(start = 34.dp, top = 4.dp),
+                            modifier = Modifier.padding(start = 56.dp, top = 4.dp),
                         )
                     }
                     if (todo.images.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 34.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(start = 56.dp)) {
                             todo.images.take(4).forEachIndexed { index, name ->
                                 Thumb(DraftPhoto(name, storedName = name), todo.id, 44.dp) { onOpenImage(index) }
                             }
@@ -857,39 +1068,28 @@ private fun TodoRow(
 }
 
 @Composable
-private fun RemindCircle(done: Boolean, accent: Color, backdrop: Backdrop, onToggle: () -> Unit) {
-    val fill by animateFloatAsState(if (done) 1f else 0f, spring(dampingRatio = 0.55f, stiffness = 380f), label = "fill")
-    val scale by animateFloatAsState(if (done) 1f else 0.6f, spring(dampingRatio = 0.5f, stiffness = 300f), label = "check")
+private fun RemindCircle(done: Boolean, accent: Color, onToggle: () -> Unit) {
+    val fill by animateFloatAsState(if (done) 1f else 0f, Motion.bouncy(), label = "fill")
+    val scale by animateFloatAsState(if (done) 1f else 0.6f, Motion.bouncy(), label = "check")
     Box(
         Modifier
-            .size(22.dp)
-            .graphicsLayer { scaleX = 0.92f + 0.08f * fill; scaleY = 0.92f + 0.08f * fill }
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { CircleShape },
-                effects = {
-                    vibrancy()
-                    blur(2f.dp.toPx())
-                    lens(6f.dp.toPx(), 12f.dp.toPx(), chromaticAberration = true)
-                },
-                highlight = { Highlight.Default },
-                onDrawSurface = {
-                    if (fill > 0.04f) {
-                        drawCircle(accent.copy(alpha = fill))
-                    } else {
-                        drawCircle(accent, style = Stroke(width = 1.6.dp.toPx()))
-                    }
-                },
-            )
+            .size(44.dp)
             .clickable(interactionSource = null, indication = null, onClick = onToggle),
         contentAlignment = Alignment.Center,
     ) {
-        if (!done) {
-            Box(Modifier.size(18.dp).clip(CircleShape).background(Color.Transparent))
+        Canvas(
+            Modifier
+                .size(22.dp)
+                .graphicsLayer { scaleX = 0.92f + 0.08f * fill; scaleY = 0.92f + 0.08f * fill },
+        ) {
+            if (fill > 0.04f) drawCircle(accent.copy(alpha = fill))
+            if (fill < 0.98f) {
+                drawCircle(accent, style = Stroke(width = 1.6.dp.toPx()))
+            }
         }
         if (fill > 0.2f) {
             Icon(
-                Icons.Rounded.Check,
+                StudyIcons.Check,
                 contentDescription = "完成",
                 tint = Color.White.copy(alpha = fill),
                 modifier = Modifier.size(14.dp).graphicsLayer { scaleX = scale; scaleY = scale },
@@ -910,8 +1110,6 @@ private fun BoxScope.TodoEditorSheet(
 ) {
     val colors = studyColors()
     val today = PlanTime.today()
-    val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
     var title by remember(existing?.id) { mutableStateOf(existing?.title.orEmpty()) }
     var note by remember(existing?.id) { mutableStateOf(existing?.note.orEmpty()) }
     var start by remember(existing?.id) {
@@ -933,135 +1131,48 @@ private fun BoxScope.TodoEditorSheet(
     var openGroup by remember(existing?.id) { mutableStateOf(false) }
     var photoMenu by remember(existing?.id) { mutableStateOf(false) }
     var error by remember(existing?.id) { mutableStateOf<String?>(null) }
-    val sheetShape = UnevenRoundedRectangle(36.dp, 36.dp, 0.dp, 0.dp, RoundedCornerStyle.Continuous)
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val sheetHeight = maxHeight - WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        val sheetPx = with(density) { sheetHeight.toPx() }
-        val offset = remember(sheetPx) { Animatable(0f) }
-        val scrim = ((sheetPx - offset.value) / sheetPx).coerceIn(0f, 1f) * 0.34f
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = scrim))
-                .clickable(interactionSource = null, indication = null) {
-                    photos.forEach { it.file?.delete() }
-                    onDismiss()
-                },
-        )
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(sheetHeight)
-                .offset { IntOffset(0, offset.value.roundToInt()) }
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { sheetShape },
-                    effects = {
-                        vibrancy()
-                        blur(2f.dp.toPx())
-                        lens(16f.dp.toPx(), 32f.dp.toPx(), chromaticAberration = true)
-                    },
-                    highlight = { Highlight.Default },
-                    shadow = { Shadow(radius = 16.dp, alpha = 0.12f) },
-                    onDrawSurface = { drawRect(colors.glass) },
-                )
-                .testTag("todo-sheet"),
-        ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .testTag("sheet-handle")
-                    .pointerInput(sheetPx) {
-                        val tracker = VelocityTracker()
-                        var dragOffset = offset.value
-                        fun settle(current: Float, velocity: Float) {
-                            val draggedDown = current > with(density) { 96.dp.toPx() }
-                            val target = if (velocity > 900f || draggedDown) sheetPx else 0f
-                            scope.launch {
-                                offset.animateTo(target, spring(dampingRatio = 0.82f, stiffness = 380f))
-                                if (target >= sheetPx - 1f) {
-                                    photos.forEach { it.file?.delete() }
-                                    onDismiss()
-                                }
-                            }
-                        }
-                        detectVerticalDragGestures(
-                            onDragStart = {
-                                tracker.resetTracking()
-                                dragOffset = offset.value
-                            },
-                            onVerticalDrag = { change, drag ->
-                                tracker.addPosition(change.uptimeMillis, change.position)
-                                dragOffset = (dragOffset + drag).coerceIn(0f, sheetPx)
-                                scope.launch { offset.snapTo(dragOffset) }
-                            },
-                            onDragEnd = { settle(dragOffset, tracker.calculateVelocity().y) },
-                            onDragCancel = { settle(dragOffset, 0f) },
-                        )
+    val view = LocalView.current
+    fun reject(message: String) {
+        error = message
+        view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+    }
+    fun dismiss() {
+        photos.forEach { it.file?.delete() }
+        onDismiss()
+    }
+    GlassSheet(
+        backdrop = backdrop,
+        onDismiss = { dismiss() },
+        modifier = Modifier.testTag("todo-sheet"),
+        header = {
+            SheetHeader(
+                title = if (existing == null) "添加待办" else "修改待办",
+                confirmLabel = if (existing == null) "添加" else "完成",
+                confirmEnabled = title.isNotBlank(),
+                backdrop = backdrop,
+                onClose = { dismiss() },
+                onConfirm = {
+                    if (title.isBlank()) {
+                        reject("写上标题。")
+                        return@SheetHeader
                     }
-                    .padding(top = 8.dp, bottom = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    Modifier
-                        .size(width = 36.dp, height = 5.dp)
-                        .liquidGlass(backdrop, com.kyant.shapes.Capsule(), colors.glass, blurRadius = 2.dp, refraction = 8.dp, chromatic = false),
-                )
-            }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "取消",
-                    color = colors.blue,
-                    fontSize = 17.sp,
-                    modifier = Modifier
-                        .clickable(interactionSource = null, indication = null) {
-                            photos.forEach { it.file?.delete() }
-                            onDismiss()
-                        }
-                        .padding(8.dp),
-                )
-                Text(
-                    if (existing == null) "添加待办" else "修改待办",
-                    color = colors.label,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-                Text(
-                    if (existing == null) "添加" else "完成",
-                    color = colors.blue,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clickable(interactionSource = null, indication = null) {
-                            if (title.isBlank()) {
-                                error = "写上标题。"
-                                return@clickable
-                            }
-                            if (end < start) {
-                                error = "结束日期不能早于开始。"
-                                return@clickable
-                            }
-                            onSave(
-                                title.trim(),
-                                note.trim(),
-                                start.toString(),
-                                end.toString(),
-                                if (remindOn) remindDay.toString() else null,
-                                if (remindOn) remindMinutes else null,
-                                groupId,
-                                photos,
-                            )
-                        }
-                        .padding(8.dp),
-                )
-            }
-            Column(
+                    val savedEnd = endNotBefore(start, end)
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                    onSave(
+                        title.trim(),
+                        note.trim(),
+                        start.toString(),
+                        savedEnd.toString(),
+                        if (remindOn) remindDay.toString() else null,
+                        if (remindOn) remindMinutes else null,
+                        groupId,
+                        photos,
+                    )
+                },
+            )
+        },
+    ) {
+        Column(
                 Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
@@ -1081,12 +1192,21 @@ private fun BoxScope.TodoEditorSheet(
                     DateRow("开始", start, openDate == DateTarget.START, "date-start") {
                         openDate = if (openDate == DateTarget.START) null else DateTarget.START
                     }
-                    if (openDate == DateTarget.START) InlineCalendar(start, "inline-calendar") { start = it }
+                    if (openDate == DateTarget.START) {
+                        InlineCalendar(start, "inline-calendar") { picked ->
+                            end = endWhenStartDateMoves(start, end, picked)
+                            start = picked
+                        }
+                    }
                     Hairline()
                     DateRow("结束", end, openDate == DateTarget.END, "date-end") {
                         openDate = if (openDate == DateTarget.END) null else DateTarget.END
                     }
-                    if (openDate == DateTarget.END) InlineCalendar(end, "inline-calendar-end") { end = it }
+                    if (openDate == DateTarget.END) {
+                        InlineCalendar(end, "inline-calendar-end") { picked ->
+                            end = endNotBefore(start, picked)
+                        }
+                    }
                 }
                 Spacer(Modifier.height(16.dp))
                 GlassSection(backdrop) {
@@ -1159,7 +1279,7 @@ private fun BoxScope.TodoEditorSheet(
                                             },
                                         contentAlignment = Alignment.Center,
                                     ) {
-                                        Icon(Icons.Rounded.Close, contentDescription = "移除图片", tint = Color.White, modifier = Modifier.size(14.dp))
+                                        Icon(StudyIcons.Close, contentDescription = "移除图片", tint = Color.White, modifier = Modifier.size(14.dp))
                                     }
                                 }
                             }
@@ -1173,7 +1293,7 @@ private fun BoxScope.TodoEditorSheet(
                             .padding(horizontal = 16.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.Add, contentDescription = null, tint = colors.blue, modifier = Modifier.size(20.dp))
+                        Icon(StudyIcons.Add, contentDescription = "添加图片", tint = colors.blue, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(8.dp))
                         Text("添加图片", color = colors.blue, fontSize = 17.sp)
                     }
@@ -1183,7 +1303,7 @@ private fun BoxScope.TodoEditorSheet(
         }
         if (photoMenu) {
             ActionSheet(backdrop, onDismiss = { photoMenu = false }) {
-                ActionRow("相册", Icons.Rounded.PhotoLibrary, colors.blue) {
+                ActionRow("相册", StudyIcons.PhotoLibrary, colors.blue) {
                     photoMenu = false
                     val room = TodoImages.MAX_COUNT - photos.size
                     if (room > 0) {
@@ -1191,202 +1311,24 @@ private fun BoxScope.TodoEditorSheet(
                             photos = photos + uris.take(room).map { DraftPhoto(it.toString(), uri = it) }
                         }
                     } else {
-                        error = "最多 ${TodoImages.MAX_COUNT} 张图片。"
+                        reject("最多 ${TodoImages.MAX_COUNT} 张图片。")
                     }
                 }
                 Hairline()
-                ActionRow("拍照", Icons.Rounded.PhotoCamera, colors.blue) {
+                ActionRow("拍照", StudyIcons.PhotoCamera, colors.blue) {
                     photoMenu = false
                     if (photos.size < TodoImages.MAX_COUNT) {
                         onTakePhoto { file ->
                             if (file != null) photos = photos + DraftPhoto(file.absolutePath, file = file)
                         }
                     } else {
-                        error = "最多 ${TodoImages.MAX_COUNT} 张图片。"
+                        reject("最多 ${TodoImages.MAX_COUNT} 张图片。")
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                ActionRow("取消", Icons.Rounded.Close, colors.label) { photoMenu = false }
+                ActionRow("取消", StudyIcons.Close, colors.label) { photoMenu = false }
             }
         }
-    }
-}
-
-@Composable
-private fun GlassSection(backdrop: Backdrop, content: @Composable () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .liquidGlass(backdrop, squircle(12.dp), studyColors().glass, blurRadius = 2.dp, refraction = 20.dp),
-    ) { content() }
-}
-
-@Composable
-private fun Hairline() {
-    Box(Modifier.padding(start = 16.dp).fillMaxWidth().height(0.5.dp).background(studyColors().separator))
-}
-
-@Composable
-private fun BorderlessField(value: String, placeholder: String, colors: StudyColors, onChange: (String) -> Unit) {
-    BasicTextField(
-        value = value,
-        onValueChange = onChange,
-        textStyle = TextStyle(color = colors.label, fontSize = 17.sp),
-        cursorBrush = SolidColor(colors.blue),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        decorationBox = { inner ->
-            Box {
-                if (value.isEmpty()) Text(placeholder, color = colors.tertiary, fontSize = 17.sp)
-                inner()
-            }
-        },
-    )
-}
-
-@Composable
-private fun DateRow(label: String, date: LocalDate, open: Boolean, tag: String, onClick: () -> Unit) {
-    val colors = studyColors()
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .testTag(tag)
-            .clickable(interactionSource = null, indication = null, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, color = colors.label, fontSize = 17.sp, modifier = Modifier.weight(1f))
-        Text(
-            dateLabel(date),
-            color = if (open) Color.White else colors.label,
-            fontSize = 15.sp,
-            modifier = Modifier
-                .clip(com.kyant.shapes.Capsule())
-                .background(if (open) colors.blue else colors.track)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-        )
-    }
-}
-
-@Composable
-private fun InlineCalendar(selected: LocalDate, tag: String, onPick: (LocalDate) -> Unit) {
-    val colors = studyColors()
-    var month by remember(selected) { mutableStateOf(YearMonth.from(selected)) }
-    val weeks = listOf("一", "二", "三", "四", "五", "六", "日")
-    val today = PlanTime.today()
-    Column(Modifier.testTag(tag).padding(horizontal = 8.dp, vertical = 4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "${month.year}年${month.monthValue}月",
-                color = colors.label,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f).padding(start = 8.dp),
-            )
-            Text("‹", color = colors.blue, fontSize = 22.sp, modifier = Modifier.clickable(interactionSource = null, indication = null) { month = month.minusMonths(1) }.padding(8.dp))
-            Text("›", color = colors.blue, fontSize = 22.sp, modifier = Modifier.clickable(interactionSource = null, indication = null) { month = month.plusMonths(1) }.padding(8.dp))
-        }
-        Row(Modifier.fillMaxWidth()) {
-            weeks.forEach { day ->
-                Text(day, color = colors.tertiary, fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
-        }
-        val lead = month.atDay(1).dayOfWeek.value - 1
-        val count = month.lengthOfMonth()
-        val rows = (lead + count + 6) / 7
-        for (row in 0 until rows) {
-            Row(Modifier.fillMaxWidth()) {
-                for (column in 0 until 7) {
-                    val day = row * 7 + column - lead + 1
-                    Box(Modifier.weight(1f).height(36.dp), contentAlignment = Alignment.Center) {
-                        if (day in 1..count) {
-                            val cell = month.atDay(day)
-                            val on = cell == selected
-                            Box(
-                                Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(if (on) colors.blue else Color.Transparent)
-                                    .clickable(interactionSource = null, indication = null) { onPick(cell) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "$day",
-                                    color = when {
-                                        on -> Color.White
-                                        cell == today -> colors.blue
-                                        else -> colors.label
-                                    },
-                                    fontSize = 16.sp,
-                                    fontWeight = if (on || cell == today) FontWeight.SemiBold else FontWeight.Normal,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimeWheels(minutes: Int, onChange: (Int) -> Unit) {
-    val colors = studyColors()
-    val hour = minutes / 60
-    val minute = minutes % 60
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Wheel("小时", hour, 0..23, colors) { onChange(it * 60 + minute) }
-        Text(":", color = colors.label, fontSize = 22.sp)
-        Wheel("分钟", minute, 0..59, colors) { onChange(hour * 60 + it) }
-    }
-}
-
-@Composable
-private fun Wheel(label: String, value: Int, range: IntRange, colors: StudyColors, onChange: (Int) -> Unit) {
-    val prev = if (value - 1 < range.first) range.last else value - 1
-    val next = if (value + 1 > range.last) range.first else value + 1
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 12.dp)) {
-        Text(label, color = colors.secondary, fontSize = 13.sp)
-        Text(
-            "%02d".format(prev),
-            color = colors.tertiary,
-            fontSize = 15.sp,
-            modifier = Modifier.clickable(interactionSource = null, indication = null) { onChange(prev) }.padding(6.dp),
-        )
-        Text(
-            "%02d".format(value),
-            color = colors.label,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .clip(squircle(8.dp))
-                .background(colors.track)
-                .pointerInput(value) {
-                    var accum = 0f
-                    detectVerticalDragGestures { _, dy ->
-                        accum += dy
-                        val step = 28.dp.toPx()
-                        if (accum > step) {
-                            accum = 0f
-                            onChange(prev)
-                        } else if (accum < -step) {
-                            accum = 0f
-                            onChange(next)
-                        }
-                    }
-                }
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        Text(
-            "%02d".format(next),
-            color = colors.tertiary,
-            fontSize = 15.sp,
-            modifier = Modifier.clickable(interactionSource = null, indication = null) { onChange(next) }.padding(6.dp),
-        )
-    }
 }
 
 @Composable
@@ -1411,7 +1353,7 @@ private fun GroupChoice(
         GroupDot(color ?: colors.tertiary, if (id == null) null else name.take(1))
         Spacer(Modifier.width(12.dp))
         Text(name, color = colors.label, fontSize = 17.sp, modifier = Modifier.weight(1f))
-        if (selected) Icon(Icons.Rounded.Check, contentDescription = "已选", tint = colors.blue, modifier = Modifier.size(18.dp))
+        if (selected) Icon(StudyIcons.Check, contentDescription = "已选", tint = colors.blue, modifier = Modifier.size(18.dp))
         if (id == null) Spacer(Modifier.width(0.dp))
     }
 }
@@ -1502,19 +1444,19 @@ private fun GroupsPage(
                     Text("${todos.count { it.groupId == group.id }}", color = colors.secondary, fontSize = 17.sp)
                     Spacer(Modifier.width(8.dp))
                     Icon(
-                        Icons.Rounded.KeyboardArrowUp,
+                        StudyIcons.KeyboardArrowUp,
                         contentDescription = "上移",
                         tint = colors.tertiary,
                         modifier = Modifier.size(22.dp).clickable(interactionSource = null, indication = null) { onMove(group.id, -1) },
                     )
                     Icon(
-                        Icons.Rounded.KeyboardArrowDown,
+                        StudyIcons.KeyboardArrowDown,
                         contentDescription = "下移",
                         tint = colors.tertiary,
                         modifier = Modifier.size(22.dp).clickable(interactionSource = null, indication = null) { onMove(group.id, 1) },
                     )
                     Icon(
-                        Icons.Rounded.Delete,
+                        StudyIcons.Delete,
                         contentDescription = "删除分组",
                         tint = colors.red,
                         modifier = Modifier.size(20.dp).clickable(interactionSource = null, indication = null) { confirm = group },
@@ -1547,17 +1489,17 @@ private fun GroupsPage(
     val deleting = confirm
     if (deleting != null) {
         ActionSheet(backdrop, onDismiss = { confirm = null }) {
-            ActionRow("移到未分组", Icons.Rounded.Check, colors.blue) {
+            ActionRow("移到未分组", StudyIcons.Check, colors.blue) {
                 confirm = null
                 onDelete(deleting.id, false)
             }
             Hairline()
-            ActionRow("连待办一起删除", Icons.Rounded.Delete, colors.red) {
+            ActionRow("连待办一起删除", StudyIcons.Delete, colors.red) {
                 confirm = null
                 onDelete(deleting.id, true)
             }
             Spacer(Modifier.height(8.dp))
-            ActionRow("取消", Icons.Rounded.Close, colors.label) { confirm = null }
+            ActionRow("取消", StudyIcons.Close, colors.label) { confirm = null }
         }
     }
     }
@@ -1592,7 +1534,7 @@ private fun ActionRow(label: String, icon: androidx.compose.ui.graphics.vector.I
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(12.dp))
         Text(label, color = tint, fontSize = 17.sp)
     }
@@ -1623,6 +1565,12 @@ private fun Thumb(photo: DraftPhoto, todoId: String?, size: androidx.compose.ui.
     }
 }
 
+internal fun viewerScrimAlpha(offset: Float, span: Float): Float {
+    if (span <= 0f) return 0.92f
+    val progress = (offset / span).coerceIn(0f, 1f)
+    return 0.92f * (1f - progress)
+}
+
 @Composable
 private fun BoxScope.PhotoViewer(
     photos: List<DraftPhoto>,
@@ -1640,7 +1588,15 @@ private fun BoxScope.PhotoViewer(
         zoom = (zoom * zoomChange).coerceIn(1f, 4f)
         pan = if (zoom <= 1.02f) Offset.Zero else pan + panChange
     }
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.92f))) {
+    val scope = rememberCoroutineScope()
+    val drag = remember { Animatable(0f) }
+    var span by remember { mutableFloatStateOf(1f) }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onSizeChanged { span = it.height.toFloat().coerceAtLeast(1f) }
+            .background(Color.Black.copy(alpha = viewerScrimAlpha(drag.value, span))),
+    ) {
         val context = LocalContext.current
         val bitmap = remember(photo.key) {
             photo.storedName?.let { TodoImages.thumb(TodoImages.file(context.filesDir, todoId, it), 1600)?.asImageBitmap() }
@@ -1651,6 +1607,7 @@ private fun BoxScope.PhotoViewer(
                 contentDescription = "待办图片",
                 modifier = Modifier
                     .fillMaxSize()
+                    .offset { IntOffset(0, drag.value.roundToInt()) }
                     .graphicsLayer {
                         scaleX = zoom
                         scaleY = zoom
@@ -1658,6 +1615,54 @@ private fun BoxScope.PhotoViewer(
                         translationY = pan.y
                     }
                     .transformable(transform)
+                    .pointerInput(photo.key) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                if (zoom < 1.5f) {
+                                    zoom = 2f
+                                } else {
+                                    zoom = 1f
+                                    pan = Offset.Zero
+                                }
+                            },
+                        )
+                    }
+                    .pointerInput(photo.key, zoom <= 1.05f) {
+                        if (zoom > 1.05f) return@pointerInput
+                        val tracker = VelocityTracker()
+                        var snap: Job? = null
+                        var dragOffset = drag.value
+                        fun settle(velocity: Float) {
+                            val height = size.height.toFloat().coerceAtLeast(1f)
+                            val strongBack = velocity < -Motion.Fling
+                            val dismiss = !strongBack && (velocity > Motion.Fling || dragOffset > height * 0.22f)
+                            val target = if (dismiss) height else 0f
+                            val pending = snap
+                            snap = null
+                            scope.launch {
+                                pending?.cancel()
+                                pending?.join()
+                                drag.animateTo(target, Motion.snappy(), initialVelocity = velocity)
+                                if (dismiss) onClose()
+                            }
+                        }
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                tracker.resetTracking()
+                                dragOffset = drag.value
+                            },
+                            onDragEnd = { settle(tracker.calculateVelocity().y) },
+                            onDragCancel = { settle(0f) },
+                            onVerticalDrag = { change, delta ->
+                                tracker.addPosition(change.uptimeMillis, change.position)
+                                val height = size.height.toFloat().coerceAtLeast(1f)
+                                dragOffset = resistedDrag(dragOffset, delta, 0f, height, height)
+                                val next = dragOffset
+                                snap?.cancel()
+                                snap = scope.launch { drag.snapTo(next) }
+                            },
+                        )
+                    }
                     .pointerInput(photo.key, photos.size, index) {
                         var accum = 0f
                         detectHorizontalDragGestures(
@@ -1682,14 +1687,41 @@ private fun BoxScope.PhotoViewer(
         GlassIconButton(
             onClose,
             backdrop,
-            modifier = Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp),
-        ) { Icon(Icons.Rounded.Close, contentDescription = "关闭", tint = studyColors().label) }
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(12.dp)
+                .offset { IntOffset(0, drag.value.roundToInt()) },
+        ) { Icon(StudyIcons.Close, contentDescription = "关闭", tint = Color.White) }
         if (photo.storedName != null) {
             GlassIconButton(
                 { onRemove(photo.storedName) },
                 backdrop,
-                modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp),
-            ) { Icon(Icons.Rounded.Delete, contentDescription = "移除图片", tint = studyColors().red) }
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(12.dp)
+                    .offset { IntOffset(0, drag.value.roundToInt()) },
+            ) { Icon(StudyIcons.Delete, contentDescription = "移除图片", tint = Color.White) }
+        }
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = 18.dp)
+                .offset { IntOffset(0, drag.value.roundToInt()) },
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            photos.forEachIndexed { dot, _ ->
+                val selected = dot == index
+                Box(
+                    Modifier
+                        .size(if (selected) 7.dp else 6.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = if (selected) 0.92f else 0.38f)),
+                )
+            }
         }
     }
 }

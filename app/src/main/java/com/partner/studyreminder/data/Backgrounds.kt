@@ -11,6 +11,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
 import kotlin.math.max
 
 /** A photo copied into app storage, scaled down so the glass backdrop stays light. */
@@ -19,6 +21,17 @@ object Backgrounds {
 
     /** Bumped on the main thread after the file changes, so every open page reloads. */
     private val changes = mutableLongStateOf(0L)
+
+    private val cacheLock = Any()
+    private var cachedStamp = Long.MIN_VALUE
+    private var cachedImage: ImageBitmap? = null
+    private var inflightKey = Long.MIN_VALUE
+    private var inflight: Future<ImageBitmap?>? = null
+    private val decoder by lazy {
+        Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "study-background").apply { isDaemon = true }
+        }
+    }
 
     fun file(context: Context): File = File(context.applicationContext.filesDir, "background.jpg")
 
@@ -35,6 +48,7 @@ object Backgrounds {
     }
 
     fun save(context: Context, uri: Uri) {
+        invalidateCache()
         val app = context.applicationContext
         val raw = File(app.cacheDir, "background-incoming")
         app.contentResolver.openInputStream(uri).use { input ->
@@ -47,17 +61,76 @@ object Backgrounds {
             bitmap.recycle()
         } finally {
             raw.delete()
+            invalidateCache()
         }
     }
 
     fun clear(context: Context) {
+        invalidateCache()
         file(context).delete()
+        invalidateCache()
     }
 
+    /** In-memory hit for [stamp], or null when this process has not decoded it yet. */
+    fun peek(context: Context): ImageBitmap? {
+        val key = stamp(context)
+        synchronized(cacheLock) {
+            return if (cachedStamp == key) cachedImage else null
+        }
+    }
+
+    /**
+     * Shared decoded bitmap for every Activity in this process.
+     * May block. UI should call it from a background dispatcher; the file itself
+     * is decoded on [decoder], and concurrent callers share one in-flight task.
+     */
     fun load(context: Context): ImageBitmap? {
-        val file = file(context)
-        if (!file.exists() || file.length() == 0L) return null
-        val bitmap = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+        val app = context.applicationContext
+        val key = stamp(app)
+        val task = synchronized(cacheLock) {
+            if (cachedStamp == key) return cachedImage
+            val running = inflight
+            if (running != null && inflightKey == key) {
+                running
+            } else {
+                inflightKey = key
+                decoder.submit<ImageBitmap?> {
+                    val decoded = decodeStored(app)
+                    synchronized(cacheLock) {
+                        if (stamp(app) == key && inflightKey == key) {
+                            cachedStamp = key
+                            cachedImage = decoded
+                            inflight = null
+                            decoded
+                        } else {
+                            if (inflightKey == key) inflight = null
+                            if (cachedStamp == stamp(app)) cachedImage else null
+                        }
+                    }
+                }.also { inflight = it }
+            }
+        }
+        return try {
+            task.get()
+        } catch (cancelled: InterruptedException) {
+            Thread.currentThread().interrupt()
+            peek(app)
+        }
+    }
+
+    private fun invalidateCache() {
+        synchronized(cacheLock) {
+            cachedStamp = Long.MIN_VALUE
+            cachedImage = null
+            inflightKey = Long.MIN_VALUE
+            inflight = null
+        }
+    }
+
+    private fun decodeStored(context: Context): ImageBitmap? {
+        val stored = file(context)
+        if (!stored.exists() || stored.length() == 0L) return null
+        val bitmap = BitmapFactory.decodeFile(stored.absolutePath) ?: return null
         return bitmap.asImageBitmap()
     }
 

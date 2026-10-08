@@ -1,18 +1,29 @@
 package com.partner.studyreminder.ui
 
+import android.view.HapticFeedbackConstants
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,46 +32,37 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.Alarm
-import androidx.compose.material.icons.rounded.Checklist
-import androidx.compose.material.icons.rounded.ChevronLeft
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.ContentPaste
-import androidx.compose.material.icons.rounded.MoreHoriz
-import androidx.compose.material.icons.rounded.Notifications
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,37 +71,52 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.kyant.backdrop.Backdrop
 import com.kyant.shapes.Capsule
+import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.R
 import com.partner.studyreminder.alarm.AlarmScheduler
+import com.partner.studyreminder.alarm.AlarmWindow
 import com.partner.studyreminder.data.PlanItem
 import com.partner.studyreminder.data.Plans
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
 import com.partner.studyreminder.ui.glass.GlassOverlay
-import com.partner.studyreminder.ui.glass.LiquidButton
+import com.partner.studyreminder.ui.glass.GlassSheet
+import com.partner.studyreminder.ui.glass.GlassTier
+import com.partner.studyreminder.ui.glass.SheetHeader
+import com.partner.studyreminder.ui.glass.GlassUndoBar
 import com.partner.studyreminder.ui.glass.LiquidPage
+import com.partner.studyreminder.ui.glass.glass
 import com.partner.studyreminder.ui.glass.liquidGlass
 import com.partner.studyreminder.ui.glass.liquidPressFeedback
 import com.partner.studyreminder.ui.glass.rememberLiquidPress
@@ -110,7 +127,10 @@ import com.partner.studyreminder.ui.glass.drawStudyBackdrop
 import com.partner.studyreminder.ui.glass.studyColors
 import java.time.LocalDate
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private val Tabular = TextStyle(fontFeatureSettings = "tnum")
@@ -131,50 +151,41 @@ fun MainScreen(
     onTestAlarm: () -> Unit,
     onClearDay: () -> Unit,
     onDelete: (PlanItem) -> Unit,
+    onRestore: (PlanItem, String) -> Unit,
     onAdd: (LocalDate, Int, Int?, String, String) -> Unit,
     onEdit: (PlanItem, LocalDate, Int, Int?, String, String) -> Unit,
 ) {
     val context = LocalContext.current
     val colors = studyColors()
     val today = PlanTime.today()
-    val nowMin = PlanTime.nowMinutes()
+    val nowMin = rememberBeijingMinute()
     val day = remember(viewing, refreshKey) { Plans.of(context).day(viewing.toString()) }
     val upcoming = remember(viewing, refreshKey) { AlarmScheduler.upcomingCount(context) }
     val zoneOff = remember(refreshKey) { !MainActivity.zoneMatchesShanghai() }
     var askClear by remember { mutableStateOf(false) }
-    var askDelete by remember { mutableStateOf<PlanItem?>(null) }
     var editing by remember { mutableStateOf<PlanItem?>(null) }
     var adding by remember { mutableStateOf(false) }
-    var menuItem by remember { mutableStateOf<PlanItem?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var contextItem by remember { mutableStateOf<PlanItem?>(null) }
+    var contextAnchor by remember { mutableStateOf<CardBounds?>(null) }
+    var undo by remember { mutableStateOf<Pair<PlanItem, String>?>(null) }
+    var pageOrigin by remember { mutableStateOf(Offset.Zero) }
     var scrollingDown by remember { mutableStateOf(false) }
-    val listState = rememberLazyListState()
+    var collapse by remember { mutableFloatStateOf(0f) }
+    var atTop by remember { mutableStateOf(true) }
+    var atEnd by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val title = if (viewing == today) "今天" else "${viewing.monthValue}月${viewing.dayOfMonth}日"
-    val weeks = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
-    val subtitle = "${viewing.year}年${viewing.monthValue}月${viewing.dayOfMonth}日 ${weeks[viewing.dayOfWeek.value - 1]}"
-    val current = day.items.firstOrNull { slotState(it, day.items, viewing, today, nowMin) == SlotState.CURRENT }
-    val next = day.items.firstOrNull { slotState(it, day.items, viewing, today, nowMin) == SlotState.NEXT }
-    val pinnedHere = pinnedId?.takeIf { id -> day.items.any { it.id == id } }
-    val focusId = pinnedHere ?: (current ?: next)?.id
-    var expanded by remember(viewing, pinnedHere) { mutableStateOf(setOfNotNull(focusId)) }
-    val summary = daySummary(viewing, today, day.items, current, next, nowMin)
-    val collapseDistance = with(density) { 96.dp.toPx() }
-    val collapse by remember {
-        derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) {
-                1f
-            } else {
-                (listState.firstVisibleItemScrollOffset / collapseDistance).coerceIn(0f, 1f)
-            }
-        }
+    val chrome = menuOpen || contextItem != null || !scrollingDown || atTop || atEnd
+    LaunchedEffect(viewing) {
+        contextItem = null
+        contextAnchor = null
     }
-    val atTop by remember {
-        derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 12 }
+    LaunchedEffect(undo?.first?.id) {
+        val snapshot = undo ?: return@LaunchedEffect
+        delay(4_000)
+        if (undo?.first?.id == snapshot.first.id) undo = null
     }
-    val atEnd by remember { derivedStateOf { !listState.canScrollForward } }
-    val chrome = menuOpen || !scrollingDown || atTop || atEnd
-    val iconOnly = collapse > 0.55f
     val scrimStrength = ((collapse - 0.2f) / 0.45f).coerceIn(0f, 1f)
     val nestedScroll = remember {
         object : NestedScrollConnection {
@@ -190,20 +201,65 @@ fun MainScreen(
     val dayScope = rememberCoroutineScope()
     val dayDrag = remember { Animatable(0f) }
 
-    LaunchedEffect(viewing, focusId, pinnedHere) {
-        val index = day.items.indexOfFirst { it.id == focusId }
-        if (index >= 0 && (pinnedHere != null || index > 0)) listState.animateScrollToItem(index + 1)
-    }
-
     LiquidPage { backdrop ->
-        LazyColumn(
+        AnimatedContent(
+            targetState = viewing,
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { pageOrigin = it.positionInRoot() },
+            transitionSpec = {
+                val forward = targetState > initialState
+                val edge = if (forward) 1 else -1
+                slideInHorizontally(tween(280, easing = FastOutSlowInEasing)) { full -> full * edge } togetherWith
+                    slideOutHorizontally(tween(280, easing = FastOutSlowInEasing)) { full -> -full * edge }
+            },
+            label = "day",
+        ) { date ->
+            val slotDay = remember(date, refreshKey) { Plans.of(context).day(date.toString()) }
+            val listState = rememberLazyListState()
+            val collapseDistance = with(density) { 96.dp.toPx() }
+            val slotCollapse by remember {
+                derivedStateOf {
+                    if (listState.firstVisibleItemIndex > 0) {
+                        1f
+                    } else {
+                        (listState.firstVisibleItemScrollOffset / collapseDistance).coerceIn(0f, 1f)
+                    }
+                }
+            }
+            val slotTop by remember {
+                derivedStateOf { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset < 12 }
+            }
+            val slotEnd by remember { derivedStateOf { !listState.canScrollForward } }
+            val current = slotDay.items.firstOrNull { slotState(it, slotDay.items, date, today, nowMin) == SlotState.CURRENT }
+            val next = slotDay.items.firstOrNull { slotState(it, slotDay.items, date, today, nowMin) == SlotState.NEXT }
+            val entries = remember(slotDay.items) { timelineEntries(slotDay.items) }
+            val pinnedHere = pinnedId?.takeIf { id -> slotDay.items.any { it.id == id } }
+            val focusId = pinnedHere ?: (current ?: next)?.id
+            var expanded by remember(date, pinnedHere) { mutableStateOf(setOfNotNull(focusId)) }
+            val weeks = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+            val slotTitle = if (date == today) "今天" else "${date.monthValue}月${date.dayOfMonth}日"
+            val subtitle = "${date.year}年${date.monthValue}月${date.dayOfMonth}日 ${weeks[date.dayOfWeek.value - 1]}"
+            LaunchedEffect(slotCollapse, slotTop, slotEnd, date, viewing) {
+                if (date == viewing) {
+                    collapse = slotCollapse
+                    atTop = slotTop
+                    atEnd = slotEnd
+                }
+            }
+            LaunchedEffect(date, focusId, pinnedHere, viewing, entries) {
+                if (date != viewing) return@LaunchedEffect
+                val index = entries.indexOfFirst { it is TimelineEntry.Slot && it.item.id == focusId }
+                if (index >= 0 && (pinnedHere != null || index > 0)) listState.animateScrollToItem(index + 1)
+            }
+            LazyColumn(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .nestedScroll(nestedScroll),
             contentPadding = PaddingValues(
                 top = statusPad,
-                bottom = navPad + 88.dp,
+                bottom = navPad + 12.dp + 56.dp + 16.dp,
             ),
         ) {
             item(key = "header") {
@@ -211,6 +267,7 @@ fun MainScreen(
                 val dragAmount = (abs(dragPx) / with(density) { 96.dp.toPx() }).coerceIn(0f, 1f)
                 Column(
                     Modifier
+                        .animateItem(placementSpec = Motion.smooth())
                         .daySwipe(dayScope, dayDrag, with(density) { 120.dp.toPx() }, with(density) { 72.dp.toPx() }, onPrev, onNext)
                         .graphicsLayer {
                             translationX = dragPx * 0.45f
@@ -219,11 +276,11 @@ fun MainScreen(
                         }
                         .padding(horizontal = 20.dp),
                 ) {
-                    Spacer(Modifier.height(48.dp))
+                    Spacer(Modifier.height(56.dp))
                     Text(
-                        text = title,
+                        text = slotTitle,
                         color = colors.label,
-                        fontSize = 40.sp,
+                        fontSize = 34.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = (-0.6).sp,
                         modifier = if (dragAmount < 0.08f) {
@@ -243,7 +300,7 @@ fun MainScreen(
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(subtitle, color = colors.secondary, fontSize = 17.sp)
-                    if (viewing != today) {
+                    if (date != today) {
                         Text(
                             text = "回到今天",
                             color = colors.blue,
@@ -254,16 +311,20 @@ fun MainScreen(
                                 .padding(top = 4.dp, bottom = 2.dp),
                         )
                     }
-                    if (day.title.isNotBlank()) {
+                    if (slotDay.title.isNotBlank()) {
                         Spacer(Modifier.height(6.dp))
-                        Text(day.title, color = colors.label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                        Text(slotDay.title, color = colors.label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(text = summary, color = colors.secondary, fontSize = 15.sp, lineHeight = 21.sp)
-                    if (upcoming > 0) {
-                        Spacer(Modifier.height(2.dp))
-                        Text("已排好 $upcoming 次未来响铃", color = colors.tertiary, fontSize = 13.sp)
-                    }
+                    Spacer(Modifier.height(10.dp))
+                    DayChips(
+                        items = slotDay.items,
+                        viewing = date,
+                        today = today,
+                        nowMin = nowMin,
+                        upcoming = upcoming,
+                        backdrop = backdrop,
+                        onPermissions = onPermissions,
+                    )
                     if (zoneOff) {
                         Spacer(Modifier.height(12.dp))
                         Text(
@@ -278,7 +339,7 @@ fun MainScreen(
                         )
                     }
                     Spacer(Modifier.height(18.dp))
-                    if (day.items.isEmpty()) {
+                    if (slotDay.items.isEmpty()) {
                         Text(
                             text = stringResource(R.string.empty_day),
                             color = colors.label,
@@ -286,27 +347,61 @@ fun MainScreen(
                             lineHeight = 24.sp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .liquidGlass(backdrop, squircle(26.dp), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
+                                .glass(backdrop, GlassTier.Card, squircle(26.dp))
                                 .padding(18.dp),
                         )
                     }
                 }
             }
-            itemsIndexed(day.items, key = { _, item -> item.id }) { _, item ->
-                val state = slotState(item, day.items, viewing, today, nowMin)
-                TimelineRow(
-                    item = item,
-                    state = state,
-                    expanded = item.id in expanded,
-                    nowMin = nowMin,
-                    end = effectiveEnd(item, day.items),
-                    backdrop = backdrop,
-                    onToggle = {
-                        expanded = if (item.id in expanded) expanded - item.id else expanded + item.id
-                    },
-                    onOpenMenu = { menuItem = item },
-                )
+            itemsIndexed(
+                entries,
+                key = { _, entry ->
+                    when (entry) {
+                        is TimelineEntry.Slot -> entry.item.id
+                        is TimelineEntry.Gap -> "gap-${entry.minutes}-${entry.afterId}"
+                    }
+                },
+            ) { index, entry ->
+                val lineAbove = index > 0
+                val lineBelow = index < entries.lastIndex
+                when (entry) {
+                    is TimelineEntry.Gap -> GapRow(
+                        minutes = entry.minutes,
+                        lineColor = colors.separator,
+                        modifier = Modifier.animateItem(placementSpec = Motion.smooth()),
+                    )
+                    is TimelineEntry.Slot -> {
+                        val item = entry.item
+                        val state = slotState(item, slotDay.items, date, today, nowMin)
+                        val slotOrdinal = entries.take(index + 1).count { it is TimelineEntry.Slot } - 1
+                        TimelineRow(
+                            item = item,
+                            state = state,
+                            expanded = item.id in expanded,
+                            lifted = contextItem?.id == item.id,
+                            nowMin = nowMin,
+                            end = effectiveEnd(item, slotDay.items),
+                            backdrop = backdrop,
+                            lineAbove = lineAbove,
+                            lineBelow = lineBelow,
+                            lensEnabled = slotOrdinal < 5,
+                            modifier = Modifier.animateItem(placementSpec = Motion.smooth()),
+                            onToggle = {
+                                expanded = if (item.id in expanded) expanded - item.id else expanded + item.id
+                            },
+                            onOpenMenu = { bounds ->
+                                menuOpen = false
+                                contextItem = item
+                                contextAnchor = bounds
+                            },
+                            onPosition = { bounds ->
+                                if (contextItem?.id == item.id) contextAnchor = bounds
+                            },
+                        )
+                    }
+                }
             }
+        }
         }
 
         if (scrimStrength > 0.01f) {
@@ -316,9 +411,9 @@ fun MainScreen(
         AnimatedVisibility(
             visible = chrome,
             modifier = Modifier.align(Alignment.TopCenter),
-            enter = fadeIn(spring(dampingRatio = 0.86f, stiffness = 420f)) +
-                slideInVertically(spring(dampingRatio = 0.86f, stiffness = 420f)) { -it },
-            exit = fadeOut(spring(stiffness = 420f)) + slideOutVertically { -it },
+            enter = fadeIn(Motion.snappy()) +
+                slideInVertically(Motion.snappy()) { -it },
+            exit = fadeOut(Motion.snappy()) + slideOutVertically { -it },
         ) {
             Row(
                 Modifier
@@ -327,8 +422,8 @@ fun MainScreen(
                     .padding(horizontal = 12.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlassIconButton(onPrev, backdrop, buttonSize = 40.dp) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "前一天", tint = colors.label)
+                GlassIconButton(onPrev, backdrop) {
+                    Icon(StudyIcons.ChevronLeft, contentDescription = "前一天", tint = colors.label)
                 }
                 Box(
                     Modifier
@@ -357,60 +452,53 @@ fun MainScreen(
                         )
                     }
                 }
-                GlassIconButton(onNext, backdrop, buttonSize = 40.dp) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = "后一天", tint = colors.label)
+                GlassIconButton(onNext, backdrop) {
+                    Icon(StudyIcons.ChevronRight, contentDescription = "后一天", tint = colors.label)
                 }
             }
         }
 
-        if (menuOpen) {
+        if (menuOpen || contextItem != null) {
             Box(
                 Modifier
                     .fillMaxSize()
                     .clickable(
                         interactionSource = null,
                         indication = null,
-                        onClick = { menuOpen = false },
+                        onClick = {
+                            menuOpen = false
+                            contextItem = null
+                            contextAnchor = null
+                        },
                     ),
             )
         }
 
         AnimatedVisibility(
             visible = menuOpen,
-            modifier = Modifier.align(Alignment.BottomCenter),
-            enter = fadeIn(spring(dampingRatio = 0.82f, stiffness = 380f)) +
-                slideInVertically(spring(dampingRatio = 0.82f, stiffness = 380f)) { it / 3 },
-            exit = fadeOut() + slideOutVertically { it / 3 },
+            modifier = Modifier.align(Alignment.BottomEnd),
+            enter = fadeIn(Motion.snappy()) +
+                slideInVertically(Motion.snappy()) { it / 3 },
+            exit = fadeOut(Motion.snappy()) + slideOutVertically(Motion.snappy()) { it / 3 },
         ) {
             Column(
                 Modifier
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = navPad + 76.dp)
-                    .liquidGlass(backdrop, squircle(28.dp), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
+                    .padding(end = 88.dp, bottom = navPad + 12.dp + 56.dp + 8.dp)
+                    .width(240.dp)
+                    .glass(backdrop, GlassTier.Float, squircle(22.dp), surface = colors.glass)
                     .padding(vertical = 6.dp),
             ) {
-                MenuAction(Icons.Rounded.Checklist, stringResource(R.string.menu_todos), colors.label) {
-                    menuOpen = false
-                    onOpenTodos()
-                }
-                MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Add, stringResource(R.string.add_slot), colors.label) {
-                    menuOpen = false
-                    editing = null
-                    adding = true
-                }
-                MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.FolderOpen, stringResource(R.string.open_file), colors.label) {
+                MenuAction(StudyIcons.FolderOpen, stringResource(R.string.open_file), colors.label) {
                     menuOpen = false
                     onOpenFile()
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Alarm, stringResource(R.string.test_alarm), colors.label) {
+                MenuAction(StudyIcons.Alarm, stringResource(R.string.test_alarm), colors.label) {
                     menuOpen = false
                     onTestAlarm()
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Delete, stringResource(R.string.clear_day), colors.red) {
+                MenuAction(StudyIcons.Delete, stringResource(R.string.clear_day), colors.red) {
                     menuOpen = false
                     if (day.items.isEmpty()) {
                         Toast.makeText(context, "这一天已经是空的。", Toast.LENGTH_LONG).show()
@@ -419,12 +507,12 @@ fun MainScreen(
                     }
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Notifications, stringResource(R.string.menu_permissions), colors.label) {
+                MenuAction(StudyIcons.Notifications, stringResource(R.string.menu_permissions), colors.label) {
                     menuOpen = false
                     onPermissions()
                 }
                 MenuDivider(colors.separator)
-                MenuAction(Icons.Rounded.Settings, stringResource(R.string.menu_settings), colors.label) {
+                MenuAction(StudyIcons.Settings, stringResource(R.string.menu_settings), colors.label) {
                     menuOpen = false
                     onSettings()
                 }
@@ -433,80 +521,92 @@ fun MainScreen(
 
         AnimatedVisibility(
             visible = chrome,
-            modifier = Modifier.align(Alignment.BottomEnd),
-            enter = fadeIn(spring(dampingRatio = 0.86f, stiffness = 420f)) +
-                slideInVertically(spring(dampingRatio = 0.86f, stiffness = 420f)) { it },
-            exit = fadeOut(spring(stiffness = 420f)) + slideOutVertically { it },
+            modifier = Modifier.align(Alignment.BottomCenter),
+            enter = fadeIn(Motion.snappy()) +
+                slideInVertically(Motion.snappy()) { it },
+            exit = fadeOut(Motion.snappy()) + slideOutVertically(Motion.snappy()) { it },
         ) {
             Row(
                 Modifier
+                    .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(end = 16.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlassIconButton(
-                    onClick = onOpenTodos,
-                    backdrop = backdrop,
-                    buttonSize = 48.dp,
+                Row(
+                    Modifier
+                        .weight(1f)
+                        .height(56.dp)
+                        .glass(backdrop, GlassTier.Float, Capsule()),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(Icons.Rounded.Checklist, contentDescription = stringResource(R.string.menu_todos), tint = colors.label)
-                }
-                GlassIconButton(
-                    onClick = {
-                        editing = null
-                        adding = true
-                    },
-                    backdrop = backdrop,
-                    buttonSize = 48.dp,
-                ) {
-                    Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.add_slot), tint = colors.label)
-                }
-                LiquidButton(
-                    onClick = onImportClipboard,
-                    backdrop = backdrop,
-                    tint = colors.blue,
-                    height = 48.dp,
-                ) {
-                    Icon(
-                        Icons.Rounded.ContentPaste,
+                    BarSlot(StudyIcons.Checklist, stringResource(R.string.menu_todos), onClick = onOpenTodos)
+                    BarSlot(
+                        icon = StudyIcons.ContentPaste,
+                        label = "导入",
                         contentDescription = stringResource(R.string.import_clipboard),
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp),
+                        onClick = onImportClipboard,
                     )
-                    if (!iconOnly) {
-                        Text(
-                            stringResource(R.string.import_clipboard),
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
+                    BarSlot(StudyIcons.MoreHoriz, "更多") {
+                        contextItem = null
+                        contextAnchor = null
+                        menuOpen = !menuOpen
                     }
                 }
-                GlassIconButton(
-                    onClick = { menuOpen = !menuOpen },
-                    backdrop = backdrop,
-                    buttonSize = 48.dp,
+                Box(
+                    Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(colors.blue)
+                        .clickable(interactionSource = null, indication = null) {
+                            menuOpen = false
+                            contextItem = null
+                            contextAnchor = null
+                            editing = null
+                            adding = true
+                        },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Rounded.MoreHoriz, contentDescription = "更多", tint = colors.label)
+                    Icon(
+                        StudyIcons.Add,
+                        contentDescription = stringResource(R.string.add_slot),
+                        tint = Color.White,
+                    )
                 }
             }
         }
-        val opened = menuItem
-        if (opened != null) {
-            GlassOverlay(backdrop, onDismiss = { menuItem = null }) {
-                Text(opened.title, color = colors.label, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(4.dp))
-                Text("可以改日期、时间和标题，或删掉这一条。", color = colors.secondary, fontSize = 13.sp)
-                Spacer(Modifier.height(8.dp))
-                TextButton(onClick = {
-                    menuItem = null
+        val opened = contextItem
+        val anchor = contextAnchor
+        if (opened != null && anchor != null) {
+            val menuWidth = 176.dp
+            val menuHeight = 100.dp
+            Column(
+                Modifier
+                    .offset {
+                        val widthPx = menuWidth.toPx()
+                        val heightPx = menuHeight.toPx()
+                        val left = (anchor.right - pageOrigin.x - widthPx).coerceAtLeast(12.dp.toPx())
+                        val top = (anchor.top - pageOrigin.y - heightPx - 8.dp.toPx()).coerceAtLeast(8.dp.toPx())
+                        IntOffset(left.roundToInt(), top.roundToInt())
+                    }
+                    .width(menuWidth)
+                    .glass(backdrop, GlassTier.Float, squircle(22.dp), surface = colors.glass)
+                    .padding(vertical = 4.dp),
+            ) {
+                ContextMenuRow("修改", colors.label) {
+                    contextItem = null
+                    contextAnchor = null
                     editing = opened
-                }) { Text("修改时间和计划", color = colors.blue, fontSize = 17.sp, fontWeight = FontWeight.SemiBold) }
-                TextButton(onClick = {
-                    menuItem = null
-                    askDelete = opened
-                }) { Text("删除", color = colors.red, fontSize = 17.sp) }
+                }
+                MenuDivider(colors.separator, 16.dp)
+                ContextMenuRow("删除", colors.red) {
+                    val keptTitle = day.title
+                    contextItem = null
+                    contextAnchor = null
+                    undo = opened to keptTitle
+                    onDelete(opened)
+                }
             }
         }
         if (askClear) {
@@ -529,22 +629,16 @@ fun MainScreen(
                 }
             }
         }
-        val deleting = askDelete
-        if (deleting != null) {
-            GlassOverlay(backdrop, onDismiss = { askDelete = null }) {
-                Text("删除这条？", color = colors.label, fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
-                Spacer(Modifier.height(8.dp))
-                Text(deleting.title, color = colors.secondary, fontSize = 15.sp)
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = { askDelete = null }) { Text("取消", color = colors.blue) }
-                    TextButton(onClick = {
-                        askDelete = null
-                        onDelete(deleting)
-                    }) { Text("删除", color = colors.red) }
-                }
-            }
-        }
+        GlassUndoBar(
+            visible = undo != null && editing == null && !adding,
+            backdrop = backdrop,
+            onUndo = {
+                val pending = undo ?: return@GlassUndoBar
+                undo = null
+                onRestore(pending.first, pending.second)
+            },
+            bottom = 12.dp + 56.dp + 8.dp,
+        )
         val editingItem = editing
         if (adding || editingItem != null) {
             PlanEditor(
@@ -567,60 +661,63 @@ fun MainScreen(
 }
 
 @Composable
-private fun BoxScope.TopFade(statusPad: Dp, strength: Float, colors: StudyColors) {
+internal fun BoxScope.TopFade(statusPad: Dp, strength: Float, colors: StudyColors) {
     val cover = statusPad + 46.dp
     val band = cover + 32.dp
     val image = LocalBackdropImage.current
-    BoxWithConstraints(Modifier.matchParentSize()) {
-        val screenW = maxWidth
-        val screenH = maxHeight
+    if (image != null) {
+        // Self-picked photo keeps the full-screen backdrop sample so the scrim matches the picture.
+        // The default mesh does not use this path.
+        BoxWithConstraints(Modifier.matchParentSize()) {
+            val screenW = maxWidth
+            val screenH = maxHeight
+            Canvas(
+                Modifier
+                    .fillMaxWidth()
+                    .height(band)
+                    .graphicsLayer {
+                        alpha = strength
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    },
+            ) {
+                drawStudyBackdrop(colors, screenW.toPx(), screenH.toPx(), image)
+                val coverFrac = (cover.toPx() / size.height).coerceIn(0f, 1f)
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to Color.Black,
+                        coverFrac to Color.Black,
+                        1f to Color.Transparent,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+        }
+    } else {
         Canvas(
             Modifier
                 .fillMaxWidth()
                 .height(band)
-                .graphicsLayer {
-                    alpha = strength
-                    compositingStrategy = CompositingStrategy.Offscreen
-                },
+                .graphicsLayer { alpha = strength },
         ) {
-            drawStudyBackdrop(colors, screenW.toPx(), screenH.toPx(), image)
             val coverFrac = (cover.toPx() / size.height).coerceIn(0f, 1f)
+            val top = colors.base.first()
             drawRect(
                 brush = Brush.verticalGradient(
-                    0f to Color.Black,
-                    coverFrac to Color.Black,
+                    0f to top,
+                    coverFrac to top,
                     1f to Color.Transparent,
                 ),
-                blendMode = BlendMode.DstIn,
             )
         }
     }
 }
 
-private fun daySummary(
-    viewing: LocalDate,
-    today: LocalDate,
-    items: List<PlanItem>,
-    current: PlanItem?,
-    next: PlanItem?,
-    nowMin: Int,
-): String {
-    if (items.isEmpty()) return "没有安排"
-    val head = if (viewing == today) "今日" else "${viewing.monthValue}月${viewing.dayOfMonth}日"
-    val focus = when {
-        current != null -> " · 进行中 ${PlanTime.formatMinutes(current.startMinutes)} ${current.title}"
-        next != null -> " · 下一节 ${PlanTime.formatMinutes(next.startMinutes)} ${next.title}"
-        viewing <= today -> " · 都已结束"
-        else -> ""
-    }
-    val remain = when {
-        viewing != today -> ""
-        current != null -> " · 剩余 ${(effectiveEnd(current, items) - nowMin).coerceAtLeast(0)} 分钟"
-        next != null -> " · 还有 ${(next.startMinutes - nowMin).coerceAtLeast(0)} 分钟"
-        else -> ""
-    }
-    return "$head ${items.size} 项$focus$remain"
-}
+private data class CardBounds(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+)
 
 @Composable
 private fun MenuAction(
@@ -637,20 +734,153 @@ private fun MenuAction(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
+        Icon(icon, contentDescription = label, tint = color, modifier = Modifier.size(22.dp))
         Text(label, color = color, fontSize = 17.sp)
     }
 }
 
 @Composable
-private fun MenuDivider(color: Color) {
+private fun MenuDivider(color: Color, inset: Dp = 50.dp) {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(start = 50.dp)
+            .padding(start = inset)
             .height(0.5.dp)
             .background(color),
     )
+}
+
+@Composable
+private fun ContextMenuRow(label: String, color: Color, onClick: () -> Unit) {
+    Text(
+        text = label,
+        color = color,
+        fontSize = 17.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    )
+}
+
+@Composable
+private fun RowScope.BarSlot(
+    icon: ImageVector,
+    label: String,
+    contentDescription: String = label,
+    onClick: () -> Unit,
+) {
+    val colors = studyColors()
+    Column(
+        Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .clickable(interactionSource = null, indication = null, onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = colors.label, modifier = Modifier.size(24.dp))
+        Spacer(Modifier.height(1.dp))
+        Text(label, color = colors.label, fontSize = 11.sp)
+    }
+}
+
+@Composable
+private fun DayChips(
+    items: List<PlanItem>,
+    viewing: LocalDate,
+    today: LocalDate,
+    nowMin: Int,
+    upcoming: Int,
+    backdrop: Backdrop,
+    onPermissions: () -> Unit,
+) {
+    val colors = studyColors()
+    val done = finishedCount(items, viewing, today, nowMin)
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        InfoChip(backdrop) {
+            ProgressRing(done, items.size, colors.blue, colors.track)
+            Text(
+                "$done/${items.size}",
+                color = colors.label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                style = Tabular,
+            )
+        }
+        InfoChip(backdrop, onClick = onPermissions) {
+            Box(
+                Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(if (upcoming > 0) colors.green else colors.orange),
+            )
+            Text(
+                "已排 $upcoming/${AlarmWindow.LIMIT}",
+                color = colors.label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                style = Tabular,
+            )
+        }
+        InfoChip(backdrop) {
+            Text(
+                nextOrTotalLabel(items, viewing, today, nowMin),
+                color = colors.label,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
+
+@Composable
+private fun InfoChip(
+    backdrop: Backdrop,
+    onClick: (() -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val colors = studyColors()
+    Row(
+        Modifier
+            .glass(backdrop, GlassTier.Control, Capsule(), surface = colors.glass)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(interactionSource = null, indication = null, onClick = onClick)
+                } else {
+                    Modifier
+                },
+            )
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun ProgressRing(done: Int, total: Int, color: Color, track: Color) {
+    val fraction = if (total == 0) 0f else done.toFloat() / total
+    Canvas(Modifier.size(14.dp)) {
+        val strokePx = 2.dp.toPx()
+        val radius = (size.minDimension - strokePx) / 2f
+        val stroke = Stroke(width = strokePx, cap = StrokeCap.Round)
+        drawCircle(color = track, radius = radius, style = stroke)
+        if (fraction > 0f) {
+            drawArc(
+                color = color,
+                startAngle = -90f,
+                sweepAngle = 360f * fraction,
+                useCenter = false,
+                topLeft = Offset(strokePx / 2f, strokePx / 2f),
+                size = Size(size.width - strokePx, size.height - strokePx),
+                style = stroke,
+            )
+        }
+    }
 }
 
 @Composable
@@ -658,28 +888,22 @@ private fun TimelineRow(
     item: PlanItem,
     state: SlotState,
     expanded: Boolean,
+    lifted: Boolean,
     nowMin: Int,
     end: Int,
     backdrop: Backdrop,
+    lineAbove: Boolean,
+    lineBelow: Boolean,
+    lensEnabled: Boolean,
     onToggle: () -> Unit,
-    onOpenMenu: () -> Unit,
-) {
-    TimelineBody(item, state, expanded, nowMin, end, backdrop, onToggle, onOpenMenu)
-}
-
-@Composable
-private fun TimelineBody(
-    item: PlanItem,
-    state: SlotState,
-    expanded: Boolean,
-    nowMin: Int,
-    end: Int,
-    backdrop: Backdrop,
-    onToggle: () -> Unit,
-    onOpenMenu: () -> Unit,
+    onOpenMenu: (CardBounds) -> Unit,
+    onPosition: (CardBounds) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = studyColors()
     val press = rememberLiquidPress(captureDrag = false)
+    val lift by animateFloatAsState(if (lifted) 1.04f else 1f, Motion.snappy(), label = "lift")
+    var latest by remember { mutableStateOf<CardBounds?>(null) }
     val timeColor = when (state) {
         SlotState.PAST -> colors.tertiary
         SlotState.CURRENT -> colors.blue
@@ -687,25 +911,27 @@ private fun TimelineBody(
         SlotState.FUTURE -> colors.label
     }
     val titleColor = if (state == SlotState.PAST) colors.tertiary else colors.label
-    val bodyModifier = Modifier
-        .liquidGlass(
-            backdrop = backdrop,
-            shape = squircle(26.dp),
-            surface = colors.glass,
-            blurRadius = 2.dp,
-            refraction = 24.dp,
-            chromatic = true,
-            press = press,
-        )
-        .liquidPressFeedback(press)
+    val shape = squircle(26.dp)
+    val stroke = when (state) {
+        SlotState.CURRENT -> 1.5.dp to colors.blue
+        SlotState.NEXT -> 1.dp to colors.green
+        else -> null
+    }
     Row(
-        Modifier
+        modifier
+            .zIndex(if (lifted) 2f else 0f)
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 16.dp, bottom = 14.dp)
-            .height(androidx.compose.foundation.layout.IntrinsicSize.Min)
-            .combinedClickable(onClick = onToggle, onLongClick = onOpenMenu),
+            .padding(start = 12.dp, end = 16.dp)
+            .height(IntrinsicSize.Min)
+            .combinedClickable(
+                onClick = onToggle,
+                onLongClick = { latest?.let(onOpenMenu) },
+            ),
     ) {
-        Column(Modifier.width(68.dp).padding(top = 18.dp), horizontalAlignment = Alignment.End) {
+        Column(
+            Modifier.width(68.dp).padding(top = 18.dp, bottom = 14.dp),
+            horizontalAlignment = Alignment.End,
+        ) {
             Text(
                 text = PlanTime.formatMinutes(item.startMinutes),
                 color = timeColor,
@@ -722,18 +948,42 @@ private fun TimelineBody(
                 )
             }
         }
-        Box(Modifier.width(28.dp).fillMaxHeight(), contentAlignment = Alignment.TopCenter) {
-            Box(
-                Modifier
-                    .padding(top = 22.dp)
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(timeColor),
-            )
-        }
+        DotColumn(
+            state = state,
+            lineAbove = lineAbove,
+            lineBelow = lineBelow,
+            color = timeColor,
+            lineColor = colors.separator,
+            modifier = Modifier.width(28.dp).fillMaxHeight(),
+        )
         Column(
-            bodyModifier
+            Modifier
                 .weight(1f)
+                .padding(bottom = 14.dp)
+                .onGloballyPositioned { coords ->
+                    val p = coords.positionInRoot()
+                    val next = CardBounds(
+                        p.x,
+                        p.y,
+                        p.x + coords.size.width.toFloat(),
+                        p.y + coords.size.height.toFloat(),
+                    )
+                    latest = next
+                    if (lifted) onPosition(next)
+                }
+                .graphicsLayer {
+                    scaleX = lift
+                    scaleY = lift
+                }
+                .glass(backdrop, GlassTier.Card, shape, press = press, lensEnabled = lensEnabled)
+                .then(
+                    if (stroke == null) {
+                        Modifier
+                    } else {
+                        Modifier.border(stroke.first, stroke.second, shape)
+                    },
+                )
+                .liquidPressFeedback(press)
                 .padding(horizontal = 16.dp, vertical = 16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -755,8 +1005,8 @@ private fun TimelineBody(
             }
             AnimatedVisibility(
                 visible = expanded && item.note.isNotBlank(),
-                enter = expandVertically(spring(dampingRatio = 0.86f, stiffness = 380f)) + fadeIn(),
-                exit = shrinkVertically(spring(stiffness = 380f)) + fadeOut(),
+                enter = expandVertically(Motion.snappy()) + fadeIn(),
+                exit = shrinkVertically(Motion.snappy()) + fadeOut(),
             ) {
                 Text(
                     item.note,
@@ -791,26 +1041,47 @@ private fun TimelineBody(
 
 private fun Modifier.daySwipe(
     scope: CoroutineScope,
-    offset: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+    offset: Animatable<Float, AnimationVector1D>,
     limit: Float,
     threshold: Float,
     onPrev: () -> Unit,
     onNext: () -> Unit,
 ): Modifier = pointerInput(onPrev, onNext, limit, threshold) {
+    val tracker = VelocityTracker()
+    var snap: Job? = null
+    var dragOffset = offset.value
+    fun settle(velocity: Float) {
+        val pending = snap
+        snap = null
+        scope.launch {
+            pending?.cancel()
+            pending?.join()
+            offset.animateTo(0f, Motion.smooth(), initialVelocity = velocity)
+        }
+    }
     detectHorizontalDragGestures(
+        onDragStart = {
+            tracker.resetTracking()
+            dragOffset = offset.value
+        },
         onDragEnd = {
-            val value = offset.value
-            scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 420f)) }
+            val velocity = tracker.calculateVelocity().x
+            val value = dragOffset
+            settle(velocity)
             when {
+                velocity > Motion.Fling -> onPrev()
+                velocity < -Motion.Fling -> onNext()
                 value > threshold -> onPrev()
                 value < -threshold -> onNext()
             }
         },
-        onDragCancel = {
-            scope.launch { offset.animateTo(0f, spring(dampingRatio = 0.78f, stiffness = 420f)) }
-        },
-        onHorizontalDrag = { _, delta ->
-            scope.launch { offset.snapTo((offset.value + delta).coerceIn(-limit, limit)) }
+        onDragCancel = { settle(0f) },
+        onHorizontalDrag = { change, delta ->
+            tracker.addPosition(change.uptimeMillis, change.position)
+            dragOffset = resistedDrag(dragOffset, delta, -limit, limit, limit)
+            val next = dragOffset
+            snap?.cancel()
+            snap = scope.launch { offset.snapTo(next) }
         },
     )
 }
@@ -822,6 +1093,8 @@ private fun defaultSlotStart(date: LocalDate): Int {
     return rounded.coerceIn(0, 23 * 60 + 55)
 }
 
+private enum class PlanPick { Date, Start, End }
+
 @Composable
 private fun BoxScope.PlanEditor(
     item: PlanItem?,
@@ -832,140 +1105,128 @@ private fun BoxScope.PlanEditor(
 ) {
     val colors = studyColors()
     val key = item?.id ?: "new"
-    val weeks = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
     var date by remember(key) { mutableStateOf(item?.let { runCatching { LocalDate.parse(it.date) }.getOrNull() } ?: initialDate) }
     val seedStart = remember(key) { item?.startMinutes ?: defaultSlotStart(initialDate) }
-    var startText by remember(key) { mutableStateOf(PlanTime.formatMinutes(seedStart)) }
-    var endText by remember(key) {
-        mutableStateOf(
-            item?.endMinutes?.let(PlanTime::formatMinutes)
-                ?: if (item == null) PlanTime.formatMinutes(seedStart + 45) else "",
-        )
-    }
+    var start by remember(key) { mutableIntStateOf(seedStart) }
+    var end by remember(key) { mutableStateOf(item?.endMinutes ?: if (item == null) seedStart + 45 else null) }
     var title by remember(key) { mutableStateOf(item?.title.orEmpty()) }
     var note by remember(key) { mutableStateOf(item?.note.orEmpty()) }
+    var open by remember(key) { mutableStateOf<PlanPick?>(null) }
     var error by remember(key) { mutableStateOf<String?>(null) }
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = colors.label,
-        unfocusedTextColor = colors.label,
-        focusedBorderColor = colors.blue,
-        unfocusedBorderColor = colors.separator,
-        cursorColor = colors.blue,
-        focusedLabelColor = colors.secondary,
-        unfocusedLabelColor = colors.secondary,
-        focusedContainerColor = Color.Transparent,
-        unfocusedContainerColor = Color.Transparent,
-    )
-    val dateTitle = if (date == PlanTime.today()) "今天" else "${date.monthValue}月${date.dayOfMonth}日"
-    val dateSub = "${date.year}年${date.monthValue}月${date.dayOfMonth}日 ${weeks[date.dayOfWeek.value - 1]}"
-    GlassOverlay(backdrop, onDismiss) {
-            Text(
-                if (item == null) "添加时段" else "修改计划",
-                color = colors.label,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                GlassIconButton(
-                    onClick = { date = date.minusDays(1) },
-                    backdrop = backdrop,
-                    buttonSize = 40.dp,
-                ) {
-                    Icon(Icons.Rounded.ChevronLeft, contentDescription = "前一天", tint = colors.label)
-                }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(dateTitle, color = colors.label, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    Text(dateSub, color = colors.secondary, fontSize = 13.sp)
-                }
-                GlassIconButton(
-                    onClick = { date = date.plusDays(1) },
-                    backdrop = backdrop,
-                    buttonSize = 40.dp,
-                ) {
-                    Icon(Icons.Rounded.ChevronRight, contentDescription = "后一天", tint = colors.label)
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = startText,
-                    onValueChange = { startText = it },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("开始") },
-                    placeholder = { Text("08:40") },
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
-                    shape = squircle(14.dp),
-                    colors = fieldColors,
-                )
-                OutlinedTextField(
-                    value = endText,
-                    onValueChange = { endText = it },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("结束") },
-                    placeholder = { Text("选填") },
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
-                    shape = squircle(14.dp),
-                    colors = fieldColors,
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("标题") },
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                shape = squircle(14.dp),
-                colors = fieldColors,
-            )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("备注") },
-                minLines = 2,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                shape = squircle(14.dp),
-                colors = fieldColors,
-            )
-            if (error != null) {
-                Spacer(Modifier.height(8.dp))
-                Text(error.orEmpty(), color = colors.red, fontSize = 13.sp, lineHeight = 18.sp)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text("取消", color = colors.blue) }
-                TextButton(onClick = {
-                    val start = PlanTime.parseClock(startText)
-                    if (start == null || start >= 24 * 60) {
-                        error = "开始时间写成 08:40 这样。"
-                        return@TextButton
+    val view = LocalView.current
+    fun reject(message: String) {
+        error = message
+        view.performHapticFeedback(HapticFeedbackConstants.REJECT)
+    }
+    fun toggle(pick: PlanPick) {
+        open = if (open == pick) null else pick
+    }
+    GlassSheet(
+        backdrop = backdrop,
+        onDismiss = onDismiss,
+        header = {
+            SheetHeader(
+                title = if (item == null) "添加时段" else "修改计划",
+                confirmLabel = if (item == null) "添加" else "完成",
+                confirmEnabled = title.isNotBlank(),
+                backdrop = backdrop,
+                onClose = onDismiss,
+                onConfirm = {
+                    if (start < 0 || start >= 24 * 60) {
+                        reject("开始时间写成 08:40 这样。")
+                        return@SheetHeader
                     }
-                    val end = if (endText.isBlank()) {
-                        null
-                    } else {
-                        val parsed = PlanTime.parseClock(endText)
-                        if (parsed == null) {
-                            error = "结束时间写成 09:20，或留空。"
-                            return@TextButton
-                        }
-                        PlanTime.endAfter(start, parsed)
+                    val savedEnd = end?.let { value ->
+                        if (value >= 24 * 60) value else PlanTime.endAfter(start, value)
+                    }
+                    if (savedEnd != null && savedEnd <= start && savedEnd < 24 * 60) {
+                        reject("结束时间写成 09:20，或留空。")
+                        return@SheetHeader
                     }
                     if (title.isBlank()) {
-                        error = "写上这一条的计划。"
-                        return@TextButton
+                        reject("写上这一条的计划。")
+                        return@SheetHeader
                     }
-                    onSave(date, start, end, title.trim(), note.trim())
-                }) { Text("保存", color = colors.blue, fontWeight = FontWeight.SemiBold) }
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                    onSave(date, start, savedEnd, title.trim(), note.trim())
+                },
+            )
+        },
+    ) {
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp),
+        ) {
+            if (error != null) {
+                Text(error.orEmpty(), color = colors.red, fontSize = 13.sp, lineHeight = 18.sp)
+                Spacer(Modifier.height(8.dp))
             }
+            GlassSection(backdrop) {
+                DateRow("日期", date, open == PlanPick.Date, "plan-date") { toggle(PlanPick.Date) }
+                if (open == PlanPick.Date) {
+                    InlineCalendar(date, "plan-calendar") { date = it }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            GlassSection(backdrop) {
+                ValueRow("开始", PlanTime.formatMinutes(start), open == PlanPick.Start, "plan-start") {
+                    toggle(PlanPick.Start)
+                }
+                if (open == PlanPick.Start) {
+                    TimeWheels(start) { picked ->
+                        end = endWhenStartMoves(start, end, picked)
+                        start = picked
+                    }
+                }
+                Hairline()
+                ValueRow(
+                    "结束",
+                    end?.let(PlanTime::formatMinutes) ?: "选填",
+                    open == PlanPick.End,
+                    "plan-end",
+                ) { toggle(PlanPick.End) }
+                if (open == PlanPick.End) {
+                    TimeWheels(end ?: start) { picked ->
+                        end = PlanTime.endAfter(start, picked)
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DurationChoices.forEach { minutes ->
+                    val selected = end?.minus(start) == minutes
+                    Text(
+                        "${minutes}分钟",
+                        color = if (selected) colors.blue else colors.label,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(Capsule())
+                            .background(if (selected) colors.blue.copy(alpha = 0.20f) else colors.track)
+                            .clickable {
+                                end = start + minutes
+                                error = null
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            GlassSection(backdrop) {
+                BorderlessField(title, "标题", colors) {
+                    title = it
+                    error = null
+                }
+                Hairline()
+                BorderlessField(note, "备注", colors) { note = it }
+            }
+        }
     }
 }
 
@@ -977,14 +1238,88 @@ private fun Pill(text: String, color: Color, backdrop: Backdrop) {
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
         modifier = Modifier
-            .liquidGlass(
-                backdrop = backdrop,
-                shape = Capsule(),
+            .glass(
+                backdrop,
+                GlassTier.Control,
+                Capsule(),
                 surface = color.copy(alpha = 0.20f),
-                blurRadius = 2.dp,
                 refraction = 6.dp,
                 chromatic = false,
             )
             .padding(horizontal = 8.dp, vertical = 3.dp),
     )
+}
+
+@Composable
+private fun DotColumn(
+    state: SlotState?,
+    lineAbove: Boolean,
+    lineBelow: Boolean,
+    color: Color,
+    lineColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    val dot = when (state) {
+        SlotState.PAST -> 6.dp
+        SlotState.CURRENT -> 10.dp
+        null -> 0.dp
+        else -> 8.dp
+    }
+    Canvas(modifier) {
+        val cx = size.width / 2f
+        val cy = 26.dp.toPx()
+        val stroke = 2.dp.toPx()
+        val cover = if (state == SlotState.CURRENT) 9.dp.toPx() else dot.toPx() / 2f
+        if (lineAbove) {
+            drawLine(lineColor, Offset(cx, 0f), Offset(cx, (cy - cover).coerceAtLeast(0f)), strokeWidth = stroke)
+        }
+        if (lineBelow) {
+            drawLine(
+                lineColor,
+                Offset(cx, (cy + cover).coerceAtMost(size.height)),
+                Offset(cx, size.height),
+                strokeWidth = stroke,
+            )
+        }
+        if (state == SlotState.CURRENT) {
+            drawCircle(
+                color = color.copy(alpha = 0.28f),
+                radius = 9.dp.toPx(),
+                center = Offset(cx, cy),
+                style = Stroke(width = 1.5.dp.toPx()),
+            )
+        }
+        if (state != null) {
+            drawCircle(color = color, radius = dot.toPx() / 2f, center = Offset(cx, cy))
+        }
+    }
+}
+
+@Composable
+private fun GapRow(minutes: Int, lineColor: Color, modifier: Modifier = Modifier) {
+    val colors = studyColors()
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .padding(start = 12.dp, end = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Spacer(Modifier.width(68.dp))
+        DotColumn(
+            state = null,
+            lineAbove = true,
+            lineBelow = true,
+            color = lineColor,
+            lineColor = lineColor,
+            modifier = Modifier.width(28.dp).fillMaxHeight(),
+        )
+        Text(
+            text = "间隔 $minutes 分钟",
+            color = colors.tertiary,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f),
+        )
+    }
 }
