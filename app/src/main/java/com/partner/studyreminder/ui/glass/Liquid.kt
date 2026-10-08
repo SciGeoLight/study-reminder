@@ -40,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.State
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -91,8 +92,10 @@ import com.kyant.shapes.Capsule
 import com.kyant.shapes.RoundedCornerStyle
 import com.kyant.shapes.RoundedRectangle
 import kotlin.math.abs
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
@@ -176,15 +179,34 @@ internal inline fun studyColors(): StudyColors {
 
 val LocalBackdropImage = staticCompositionLocalOf<ImageBitmap?> { null }
 
+/**
+ * Process-wide background. Read it in the caller (`val image by rememberSharedBackground()`)
+ * so a decode that finishes later recomposes that caller.
+ * [revisionHint] lets an Activity stamp force a reload in addition to [Backgrounds.changes].
+ */
+@Composable
+fun rememberSharedBackground(revisionHint: Long = 0L): State<ImageBitmap?> {
+    val context = LocalContext.current.applicationContext
+    val revision = revisionHint xor Backgrounds.changes() xor Backgrounds.stamp(context)
+    val image = remember { mutableStateOf(Backgrounds.peek(context)) }
+    LaunchedEffect(revision) {
+        val hit = Backgrounds.peek(context)
+        if (hit != null || Backgrounds.stamp(context) == 0L) {
+            image.value = hit
+            return@LaunchedEffect
+        }
+        image.value = withContext(Dispatchers.IO) { Backgrounds.load(context) }
+    }
+    return image
+}
+
 @Composable
 fun LiquidPage(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.(Backdrop) -> Unit,
 ) {
     val colors = studyColors()
-    val context = LocalContext.current
-    val revision = Backgrounds.changes() xor Backgrounds.stamp(context)
-    val image = remember(revision) { Backgrounds.load(context) }
+    val image by rememberSharedBackground()
     val backdrop = rememberLayerBackdrop()
     Box(modifier.fillMaxSize()) {
         Box(
@@ -192,9 +214,10 @@ fun LiquidPage(
                 .fillMaxSize()
                 .layerBackdrop(backdrop),
         ) {
-            if (image != null) {
+            val photo = image
+            if (photo != null) {
                 Image(
-                    bitmap = image,
+                    bitmap = photo,
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -298,6 +321,19 @@ fun BoxScope.GlassOverlay(
     )
 }
 
+/**
+ * Old entry point. Refraction and blur go through [glass] on [GlassTier.Control].
+ * [clampLens] is ignored: it used to pin every caller to a 12dp / 24dp lens and a 2dp blur.
+ */
+@Deprecated(
+    message = "Use glass(). Refraction and blur are no longer forced to 24.dp and 2.dp.",
+    replaceWith = ReplaceWith(
+        "glass(backdrop, GlassTier.Control, shape, surface, press, refraction, blurRadius, chromatic)",
+        "com.partner.studyreminder.ui.glass.GlassTier",
+    ),
+)
+@Composable
+@Suppress("UNUSED_PARAMETER")
 fun Modifier.liquidGlass(
     backdrop: Backdrop,
     shape: Shape = Capsule(),
@@ -306,33 +342,16 @@ fun Modifier.liquidGlass(
     refraction: Dp = 24.dp,
     chromatic: Boolean = true,
     press: InteractiveHighlight? = null,
-    /** Keep the shared lens. Turn off only while a gesture is fading the lens in. */
     clampLens: Boolean = true,
-): Modifier = this.drawBackdrop(
+): Modifier = glass(
     backdrop = backdrop,
-    shape = { shape },
-    effects = {
-        vibrancy()
-        // Same lens as LiquidButton. A larger blur reads as frost, not liquid.
-        blur(minOf(blurRadius, 2.dp).toPx())
-        val refractionPx = if (clampLens) {
-            maxOf(refraction, 24.dp).coerceAtMost(24.dp).toPx()
-        } else {
-            refraction.toPx()
-        }
-        val widthPx = if (clampLens) 12f.dp.toPx() else refractionPx * 0.5f
-        lens(widthPx, refractionPx, chromaticAberration = chromatic)
-    },
-    highlight = { Highlight.Default },
-    shadow = { Shadow(radius = 12.dp, alpha = 0.08f) },
-    layerBlock = if (press == null) {
-        null
-    } else {
-        { applyLiquidPress(press) }
-    },
-    onDrawSurface = {
-        if (surface.isSpecified) drawRect(surface)
-    },
+    tier = GlassTier.Control,
+    shape = shape,
+    surface = surface,
+    press = press,
+    refraction = refraction,
+    blurRadius = blurRadius,
+    chromatic = chromatic,
 )
 
 @Composable

@@ -60,6 +60,7 @@ import com.partner.studyreminder.ui.glass.LiquidPage
 import com.partner.studyreminder.ui.glass.LiquidSlider
 import com.partner.studyreminder.ui.glass.LiquidSwitch
 import com.partner.studyreminder.ui.glass.liquidGlass
+import com.partner.studyreminder.ui.glass.rememberSharedBackground
 import com.partner.studyreminder.ui.glass.squircle
 import com.partner.studyreminder.ui.glass.studyColors
 import com.partner.studyreminder.ui.theme.StudyTheme
@@ -257,7 +258,7 @@ private fun SettingsScreen(
         disabledBorderColor = colors.separator,
     )
     val context = LocalContext.current
-    val background = remember(backgroundStamp) { Backgrounds.load(context) }
+    val background by rememberSharedBackground(backgroundStamp)
     LiquidPage { backdrop ->
         Column(
             Modifier
@@ -353,10 +354,11 @@ private fun SettingsScreen(
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                 )
-                if (background != null) {
+                val preview = background
+                if (preview != null) {
                     Spacer(Modifier.height(12.dp))
                     Image(
-                        bitmap = background,
+                        bitmap = preview,
                         contentDescription = "当前背景",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier

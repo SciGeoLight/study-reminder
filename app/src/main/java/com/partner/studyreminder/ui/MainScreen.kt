@@ -571,27 +571,48 @@ private fun BoxScope.TopFade(statusPad: Dp, strength: Float, colors: StudyColors
     val cover = statusPad + 46.dp
     val band = cover + 32.dp
     val image = LocalBackdropImage.current
-    BoxWithConstraints(Modifier.matchParentSize()) {
-        val screenW = maxWidth
-        val screenH = maxHeight
+    if (image != null) {
+        // Self-picked photo keeps the full-screen backdrop sample so the scrim matches the picture.
+        // The default mesh does not use this path.
+        BoxWithConstraints(Modifier.matchParentSize()) {
+            val screenW = maxWidth
+            val screenH = maxHeight
+            Canvas(
+                Modifier
+                    .fillMaxWidth()
+                    .height(band)
+                    .graphicsLayer {
+                        alpha = strength
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    },
+            ) {
+                drawStudyBackdrop(colors, screenW.toPx(), screenH.toPx(), image)
+                val coverFrac = (cover.toPx() / size.height).coerceIn(0f, 1f)
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        0f to Color.Black,
+                        coverFrac to Color.Black,
+                        1f to Color.Transparent,
+                    ),
+                    blendMode = BlendMode.DstIn,
+                )
+            }
+        }
+    } else {
         Canvas(
             Modifier
                 .fillMaxWidth()
                 .height(band)
-                .graphicsLayer {
-                    alpha = strength
-                    compositingStrategy = CompositingStrategy.Offscreen
-                },
+                .graphicsLayer { alpha = strength },
         ) {
-            drawStudyBackdrop(colors, screenW.toPx(), screenH.toPx(), image)
             val coverFrac = (cover.toPx() / size.height).coerceIn(0f, 1f)
+            val top = colors.base.first()
             drawRect(
                 brush = Brush.verticalGradient(
-                    0f to Color.Black,
-                    coverFrac to Color.Black,
+                    0f to top,
+                    coverFrac to top,
                     1f to Color.Transparent,
                 ),
-                blendMode = BlendMode.DstIn,
             )
         }
     }
