@@ -12,6 +12,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -41,7 +42,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -98,6 +99,7 @@ import com.partner.studyreminder.data.TodoImages
 import com.partner.studyreminder.data.Todos
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
+import com.partner.studyreminder.ui.glass.GlassLensBudget
 import com.partner.studyreminder.ui.glass.GlassSheet
 import com.partner.studyreminder.ui.glass.GlassTier
 import com.partner.studyreminder.ui.glass.SheetHeader
@@ -133,6 +135,13 @@ private const val FILTER_ALL = "*"
 private const val FILTER_NONE = "-"
 private const val FILTER_MORE = "more"
 private enum class Bucket(val label: String) { OVERDUE("已过期"), TODAY("今天"), UPCOMING("即将到来"), DONE("已完成") }
+
+private enum class TileFilter(val label: String) {
+    TODAY("今天"),
+    OVERDUE("已逾期"),
+    ALL("全部"),
+    DONE("已完成"),
+}
 private enum class DateTarget { START, END, REMIND }
 
 private fun bucketOf(todo: Todo, today: LocalDate): Bucket {
@@ -168,6 +177,24 @@ internal fun todoChipCounts(todos: List<Todo>, today: LocalDate): TodoChipCounts
         }
     }
     return TodoChipCounts(open, dueToday, overdue)
+}
+
+internal data class TodoTileCounts(val today: Int, val overdue: Int, val all: Int, val done: Int)
+
+/** Tile numbers follow [bucketOf] on the group-filtered list. 全部 counts every item in that list. */
+internal fun todoTileCounts(todos: List<Todo>, today: LocalDate): TodoTileCounts {
+    var todayCount = 0
+    var overdue = 0
+    var done = 0
+    for (todo in todos) {
+        when (bucketOf(todo, today)) {
+            Bucket.TODAY -> todayCount++
+            Bucket.OVERDUE -> overdue++
+            Bucket.DONE -> done++
+            Bucket.UPCOMING -> Unit
+        }
+    }
+    return TodoTileCounts(todayCount, overdue, todos.size, done)
 }
 
 private fun StudyColors.dot(color: String): Color = when (color) {
@@ -206,6 +233,7 @@ internal fun TodosScreen(
         groups = Todos.of(context).groups()
     }
     var filter by remember { mutableStateOf(FILTER_ALL) }
+    var tile by remember { mutableStateOf(TileFilter.ALL) }
     var showOverflow by remember { mutableStateOf(false) }
     var barEpoch by remember { mutableIntStateOf(0) }
     var pinned by remember { mutableStateOf(Prefs.todoBarGroups(context)) }
@@ -229,14 +257,23 @@ internal fun TodosScreen(
     }
     val scrimStrength = ((collapse - 0.2f) / 0.45f).coerceIn(0f, 1f)
     val statusPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val visible = todos.filter { todo ->
+    val grouped = todos.filter { todo ->
         when (filter) {
             FILTER_ALL -> true
             FILTER_NONE -> todo.groupId == null
             else -> todo.groupId == filter
         }
     }
-    val chipCounts = todoChipCounts(visible, today)
+    val chipCounts = todoChipCounts(grouped, today)
+    val tileCounts = todoTileCounts(grouped, today)
+    val visible = grouped.filter { todo ->
+        when (tile) {
+            TileFilter.ALL -> true
+            TileFilter.TODAY -> bucketOf(todo, today) == Bucket.TODAY
+            TileFilter.OVERDUE -> bucketOf(todo, today) == Bucket.OVERDUE
+            TileFilter.DONE -> bucketOf(todo, today) == Bucket.DONE
+        }
+    }
     val sections = Bucket.entries.map { bucket ->
         bucket to visible.filter { bucketOf(it, today) == bucket }
             .sortedWith(compareBy({ it.endDate }, { it.startDate }, { it.title }))
@@ -278,23 +315,33 @@ internal fun TodosScreen(
                             fontWeight = FontWeight.Bold,
                             letterSpacing = (-0.6).sp,
                         )
+                        Spacer(Modifier.height(12.dp))
+                        TodoTiles(
+                            counts = tileCounts,
+                            selected = tile,
+                            backdrop = backdrop,
+                            onSelect = { next ->
+                                tile = if (next == tile && next != TileFilter.ALL) TileFilter.ALL else next
+                            },
+                        )
                         Spacer(Modifier.height(10.dp))
                         TodoStatChips(chipCounts, backdrop)
                         Spacer(Modifier.height(8.dp))
                     }
                 }
                 if (visible.isEmpty()) {
-                    item(key = "empty") {
+                    item(key = "empty-$tile") {
                         Text(
-                            "点右下角加号写一件。",
+                            if (grouped.isEmpty()) "点右下角加号写一件。" else "这里还没有这一类。",
                             color = colors.secondary,
                             fontSize = 17.sp,
                             modifier = Modifier.animateItem(placementSpec = Motion.smooth()).padding(horizontal = 32.dp, vertical = 12.dp),
                         )
                     }
                 }
+                var rowOrdinal = 0
                 sections.forEach { (bucket, rows) ->
-                    item(key = "h-${filter}-${bucket.name}") {
+                    item(key = "h-${filter}-${tile.name}-${bucket.name}") {
                         Text(
                             bucket.label,
                             color = colors.label,
@@ -303,12 +350,15 @@ internal fun TodosScreen(
                             modifier = Modifier.animateItem(placementSpec = Motion.smooth()).padding(start = 20.dp, top = 8.dp, bottom = 8.dp),
                         )
                     }
-                    items(rows, key = { "t-$filter-${it.id}" }) { todo ->
+                    val lensBase = rowOrdinal
+                    rowOrdinal += rows.size
+                    itemsIndexed(rows, key = { _, todo -> "t-$filter-${tile.name}-${todo.id}" }) { index, todo ->
                         TodoRow(
                             modifier = Modifier.animateItem(placementSpec = Motion.smooth()),
                             todo = todo,
                             group = groups.firstOrNull { it.id == todo.groupId },
                             backdrop = backdrop,
+                            lensEnabled = lensBase + index < GlassLensBudget,
                             onToggle = {
                                 view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                                 onToggle(todo)
@@ -706,6 +756,116 @@ private fun OverflowPickRow(label: String, dot: Color?, colors: StudyColors, onC
 }
 
 @Composable
+private fun TodoTiles(
+    counts: TodoTileCounts,
+    selected: TileFilter,
+    backdrop: Backdrop,
+    onSelect: (TileFilter) -> Unit,
+) {
+    val colors = studyColors()
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TodoTile(
+                filter = TileFilter.TODAY,
+                count = counts.today,
+                tint = colors.orange,
+                icon = StudyIcons.Alarm,
+                selected = selected == TileFilter.TODAY,
+                backdrop = backdrop,
+                onClick = { onSelect(TileFilter.TODAY) },
+                modifier = Modifier.weight(1f),
+            )
+            TodoTile(
+                filter = TileFilter.OVERDUE,
+                count = counts.overdue,
+                tint = colors.red,
+                icon = null,
+                selected = selected == TileFilter.OVERDUE,
+                backdrop = backdrop,
+                onClick = { onSelect(TileFilter.OVERDUE) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TodoTile(
+                filter = TileFilter.ALL,
+                count = counts.all,
+                tint = colors.blue,
+                icon = StudyIcons.Checklist,
+                selected = selected == TileFilter.ALL,
+                backdrop = backdrop,
+                onClick = { onSelect(TileFilter.ALL) },
+                modifier = Modifier.weight(1f),
+            )
+            TodoTile(
+                filter = TileFilter.DONE,
+                count = counts.done,
+                tint = colors.green,
+                icon = StudyIcons.Check,
+                selected = selected == TileFilter.DONE,
+                backdrop = backdrop,
+                onClick = { onSelect(TileFilter.DONE) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TodoTile(
+    filter: TileFilter,
+    count: Int,
+    tint: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector?,
+    selected: Boolean,
+    backdrop: Backdrop,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = studyColors()
+    val shape = squircle(22.dp)
+    Box(
+        modifier
+            .height(64.dp)
+            .testTag("tile-${filter.label}")
+            .glass(backdrop, GlassTier.Card, shape)
+            .then(if (selected) Modifier.border(1.5.dp, colors.blue, shape) else Modifier)
+            .clickable(interactionSource = null, indication = null, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+    ) {
+        Row(Modifier.align(Alignment.TopStart), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(tint),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (icon != null) {
+                    Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                } else {
+                    Text("!", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+        Text(
+            "$count",
+            color = colors.label,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.TopEnd),
+        )
+        Text(
+            filter.label,
+            color = colors.label,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.align(Alignment.BottomStart),
+        )
+    }
+}
+
+@Composable
 private fun TodoStatChips(counts: TodoChipCounts, backdrop: Backdrop) {
     val colors = studyColors()
     FlowRow(
@@ -755,6 +915,7 @@ private fun TodoRow(
     todo: Todo,
     group: TodoGroup?,
     backdrop: Backdrop,
+    lensEnabled: Boolean = true,
     onToggle: () -> Unit,
     onOpen: () -> Unit,
     onDelete: () -> Unit,
@@ -808,7 +969,7 @@ private fun TodoRow(
             Modifier
                 .offset { IntOffset(shift.roundToInt(), 0) }
                 .fillMaxWidth()
-                .glass(backdrop, GlassTier.Card, squircle(26.dp), press = press)
+                .glass(backdrop, GlassTier.Card, squircle(26.dp), press = press, lensEnabled = lensEnabled)
                 .liquidPressFeedback(press)
                 .pointerInput(todo.id, reveal) {
                     val tracker = VelocityTracker()

@@ -21,6 +21,19 @@ class TodoChipTest {
         assertEquals(3, counts.open)
         assertEquals(1, counts.dueToday)
         assertEquals(1, counts.overdue)
+        val tiles = todoTileCounts(
+            listOf(
+                todo("late", today.minusDays(3), today.minusDays(1), done = false),
+                todo("due", today.minusDays(2), today, done = false),
+                todo("later", today.plusDays(1), today.plusDays(1), done = false),
+                todo("finished", today.minusDays(4), today.minusDays(1), done = true),
+            ),
+            today,
+        )
+        assertEquals(1, tiles.today)
+        assertEquals(1, tiles.overdue)
+        assertEquals(4, tiles.all)
+        assertEquals(1, tiles.done)
     }
 
     private fun todo(id: String, start: LocalDate, end: LocalDate, done: Boolean) = Todo(

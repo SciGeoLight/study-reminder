@@ -77,6 +77,7 @@ import com.partner.studyreminder.ui.theme.StudyTheme
 import com.partner.studyreminder.ui.theme.ThemeMode
 import com.partner.studyreminder.ui.theme.edgeToEdge
 import com.partner.studyreminder.ui.theme.toast
+import kotlin.math.pow
 import kotlinx.coroutines.delay
 
 class SettingsForm {
@@ -201,6 +202,29 @@ class SettingsActivity : ComponentActivity() {
     }
 }
 
+internal data class SliderReadout(val plate: Color, val digit: Color, val caption: Color)
+
+/** Solid plate behind the pre-reminder digits. Light white and dark #0B1020 stay fully opaque. */
+internal fun sliderReadout(light: Boolean): SliderReadout {
+    return if (light) {
+        SliderReadout(plate = Color.White, digit = Color(0xFF1C1C1E), caption = Color(0xFF3C3C43))
+    } else {
+        SliderReadout(plate = Color(0xFF0B1020), digit = Color.White, caption = Color.White)
+    }
+}
+
+internal fun contrastRatio(foreground: Color, background: Color): Float {
+    fun channel(value: Float): Float {
+        return if (value <= 0.04045f) value / 12.92f else ((value + 0.055f) / 1.055f).pow(2.4f)
+    }
+    fun luminance(color: Color): Float {
+        return 0.2126f * channel(color.red) + 0.7152f * channel(color.green) + 0.0722f * channel(color.blue)
+    }
+    val lighter = maxOf(luminance(foreground), luminance(background))
+    val darker = minOf(luminance(foreground), luminance(background))
+    return (lighter + 0.05f) / (darker + 0.05f)
+}
+
 private val LightPreview = listOf(Color(0xFFB9DCFF), Color(0xFFE7D4FF), Color(0xFFFFE0EC))
 private val DarkPreview = listOf(Color(0xFF0B1020), Color(0xFF1A1440), Color(0xFF123044))
 
@@ -295,11 +319,7 @@ private fun SettingsScreen(
             }
             Spacer(Modifier.height(22.dp))
             val minutesValue = form.minutes.toIntOrNull()?.coerceIn(1, 180) ?: 5
-            val lightPlate = colors.label.red < 0.5f
-            val plate = if (lightPlate) Color.White else Color(0xFF1C1C1E)
-            val digit = if (lightPlate) colors.label else Color.White
-            val minuteLabel = if (lightPlate) colors.secondary else Color.White.copy(alpha = 0.72f)
-            val digitAlpha = if (form.preOn) 1f else 0.45f
+            val readout = sliderReadout(colors.label.red < 0.5f)
             SettingsGroup(
                 title = "提前提醒",
                 footnote = "默认关闭。打开后，每个时间段开始前会再响一次。范围 1 到 180 分钟。",
@@ -321,19 +341,19 @@ private fun SettingsScreen(
                     Modifier
                         .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 4.dp)
                         .clip(Capsule())
-                        .background(plate)
+                        .background(readout.plate)
                         .padding(horizontal = 14.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
                         "$minutesValue",
-                        color = digit.copy(alpha = digitAlpha),
+                        color = readout.digit,
                         fontSize = 28.sp,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
                         " 分钟",
-                        color = minuteLabel.copy(alpha = minuteLabel.alpha * digitAlpha),
+                        color = readout.caption,
                         fontSize = 17.sp,
                     )
                 }
