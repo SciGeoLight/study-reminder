@@ -42,9 +42,10 @@ import com.partner.studyreminder.parse.ParsedItem
 import com.partner.studyreminder.parse.PlanParsers
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
+import com.partner.studyreminder.ui.glass.GlassTier
 import com.partner.studyreminder.ui.glass.LiquidButton
 import com.partner.studyreminder.ui.glass.LiquidPage
-import com.partner.studyreminder.ui.glass.liquidGlass
+import com.partner.studyreminder.ui.glass.glass
 import com.partner.studyreminder.ui.glass.squircle
 import com.partner.studyreminder.ui.glass.studyColors
 import com.partner.studyreminder.ui.theme.StudyTheme
@@ -155,7 +156,7 @@ private fun ImportScreen(
                     Icon(StudyIcons.ChevronLeft, contentDescription = "返回", tint = colors.label)
                 }
                 Spacer(Modifier.height(12.dp))
-                Text("确认导入", color = colors.label, fontSize = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
+                Text("确认导入", color = colors.label, fontSize = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.6).sp)
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = summary,
@@ -164,7 +165,7 @@ private fun ImportScreen(
                     lineHeight = 22.sp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .liquidGlass(backdrop, squircle(26.dp), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
+                        .glass(backdrop, GlassTier.Card, squircle(22.dp))
                         .padding(16.dp),
                 )
                 if (parsed.warnings.isNotEmpty()) {
@@ -179,7 +180,7 @@ private fun ImportScreen(
                         lineHeight = 20.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .liquidGlass(backdrop, squircle(26.dp), colors.glass, blurRadius = 2.dp, refraction = 24.dp)
+                            .glass(backdrop, GlassTier.Card, squircle(22.dp))
                             .padding(14.dp),
                     )
                 }
@@ -187,7 +188,7 @@ private fun ImportScreen(
                 Column(
                     Modifier
                         .fillMaxWidth()
-                        .liquidGlass(backdrop, squircle(28.dp), colors.glass, blurRadius = 2.dp, refraction = 24.dp),
+                        .glass(backdrop, GlassTier.Card, squircle(22.dp)),
                 ) {
                     var lastDate = ""
                     items.forEachIndexed { index, item ->
@@ -220,7 +221,7 @@ private fun ImportScreen(
                 Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
             ) {
                 LiquidButton(
                     onClick = onConfirm,
@@ -231,17 +232,16 @@ private fun ImportScreen(
                 ) {
                     Text("确认导入", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                 }
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(4.dp))
                 Text(
                     text = "取消",
-                    color = colors.label,
+                    color = colors.blue,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .liquidGlass(backdrop, com.kyant.shapes.Capsule(), colors.glass, blurRadius = 4.dp, refraction = 12.dp)
-                        .clickable(onClick = onCancel)
-                        .padding(vertical = 14.dp),
+                        .clickable(interactionSource = null, indication = null, onClick = onCancel)
+                        .padding(vertical = 12.dp),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
