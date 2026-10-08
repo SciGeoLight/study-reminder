@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <include domain="file" path="plans.json" />
+    <include domain="file" path="todos.json" />
+    <include domain="file" path="todo-images" />
+    <include domain="sharedpref" path="study_reminder_prefs.xml" />
+</full-backup-content>

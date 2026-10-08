@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">学习提醒</string>
+    <string name="add_slot">添加时段</string>
+    <string name="import_clipboard">从剪贴板导入</string>
+    <string name="open_file">打开文件</string>
+    <string name="test_alarm">5秒后测试提醒</string>
+    <string name="clear_day">清空这一天</string>
+    <string name="empty_day">这一天还没有安排。\n点右下角加号自己加一条，或从剪贴板导入。</string>
+    <string name="menu_todos">待办</string>
+    <string name="menu_permissions">权限检查</string>
+    <string name="menu_settings">设置</string>
+    <string name="delete">删除</string>
+    <string name="now_badge">进行中</string>
+    <string name="zone_banner">手机时区不是北京时间。计划仍按北京时间响铃，状态栏时钟会对不上。请把系统时区改成北京。</string>
+</resources>
