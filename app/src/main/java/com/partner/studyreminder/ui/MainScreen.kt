@@ -20,6 +20,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,14 +50,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,6 +62,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -93,8 +93,6 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -113,7 +111,9 @@ import com.partner.studyreminder.data.Plans
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
 import com.partner.studyreminder.ui.glass.GlassOverlay
+import com.partner.studyreminder.ui.glass.GlassSheet
 import com.partner.studyreminder.ui.glass.GlassTier
+import com.partner.studyreminder.ui.glass.SheetHeader
 import com.partner.studyreminder.ui.glass.GlassUndoBar
 import com.partner.studyreminder.ui.glass.LiquidPage
 import com.partner.studyreminder.ui.glass.glass
@@ -1093,6 +1093,8 @@ private fun defaultSlotStart(date: LocalDate): Int {
     return rounded.coerceIn(0, 23 * 60 + 55)
 }
 
+private enum class PlanPick { Date, Start, End }
+
 @Composable
 private fun BoxScope.PlanEditor(
     item: PlanItem?,
@@ -1103,146 +1105,128 @@ private fun BoxScope.PlanEditor(
 ) {
     val colors = studyColors()
     val key = item?.id ?: "new"
-    val weeks = arrayOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
     var date by remember(key) { mutableStateOf(item?.let { runCatching { LocalDate.parse(it.date) }.getOrNull() } ?: initialDate) }
     val seedStart = remember(key) { item?.startMinutes ?: defaultSlotStart(initialDate) }
-    var startText by remember(key) { mutableStateOf(PlanTime.formatMinutes(seedStart)) }
-    var endText by remember(key) {
-        mutableStateOf(
-            item?.endMinutes?.let(PlanTime::formatMinutes)
-                ?: if (item == null) PlanTime.formatMinutes(seedStart + 45) else "",
-        )
-    }
+    var start by remember(key) { mutableIntStateOf(seedStart) }
+    var end by remember(key) { mutableStateOf(item?.endMinutes ?: if (item == null) seedStart + 45 else null) }
     var title by remember(key) { mutableStateOf(item?.title.orEmpty()) }
     var note by remember(key) { mutableStateOf(item?.note.orEmpty()) }
+    var open by remember(key) { mutableStateOf<PlanPick?>(null) }
     var error by remember(key) { mutableStateOf<String?>(null) }
     val view = LocalView.current
     fun reject(message: String) {
         error = message
         view.performHapticFeedback(HapticFeedbackConstants.REJECT)
     }
-    val fieldColors = OutlinedTextFieldDefaults.colors(
-        focusedTextColor = colors.label,
-        unfocusedTextColor = colors.label,
-        focusedBorderColor = colors.blue,
-        unfocusedBorderColor = colors.separator,
-        cursorColor = colors.blue,
-        focusedLabelColor = colors.secondary,
-        unfocusedLabelColor = colors.secondary,
-        focusedContainerColor = Color.Transparent,
-        unfocusedContainerColor = Color.Transparent,
-    )
-    val dateTitle = if (date == PlanTime.today()) "今天" else "${date.monthValue}月${date.dayOfMonth}日"
-    val dateSub = "${date.year}年${date.monthValue}月${date.dayOfMonth}日 ${weeks[date.dayOfWeek.value - 1]}"
-    GlassOverlay(backdrop, onDismiss) {
-            Text(
-                if (item == null) "添加时段" else "修改计划",
-                color = colors.label,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                GlassIconButton(
-                    onClick = { date = date.minusDays(1) },
-                    backdrop = backdrop,
-                    buttonSize = 40.dp,
-                ) {
-                    Icon(StudyIcons.ChevronLeft, contentDescription = "前一天", tint = colors.label)
-                }
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(dateTitle, color = colors.label, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                    Text(dateSub, color = colors.secondary, fontSize = 13.sp)
-                }
-                GlassIconButton(
-                    onClick = { date = date.plusDays(1) },
-                    backdrop = backdrop,
-                    buttonSize = 40.dp,
-                ) {
-                    Icon(StudyIcons.ChevronRight, contentDescription = "后一天", tint = colors.label)
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = startText,
-                    onValueChange = { startText = it },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("开始") },
-                    placeholder = { Text("08:40") },
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
-                    shape = squircle(14.dp),
-                    colors = fieldColors,
-                )
-                OutlinedTextField(
-                    value = endText,
-                    onValueChange = { endText = it },
-                    modifier = Modifier.weight(1f),
-                    label = { Text("结束") },
-                    placeholder = { Text("选填") },
-                    singleLine = true,
-                    textStyle = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, imeAction = ImeAction.Next),
-                    shape = squircle(14.dp),
-                    colors = fieldColors,
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("标题") },
-                singleLine = true,
-                textStyle = TextStyle(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                shape = squircle(14.dp),
-                colors = fieldColors,
-            )
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = note,
-                onValueChange = { note = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("备注") },
-                minLines = 2,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                shape = squircle(14.dp),
-                colors = fieldColors,
-            )
-            if (error != null) {
-                Spacer(Modifier.height(8.dp))
-                Text(error.orEmpty(), color = colors.red, fontSize = 13.sp, lineHeight = 18.sp)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = onDismiss) { Text("取消", color = colors.blue) }
-                TextButton(onClick = {
-                    val start = PlanTime.parseClock(startText)
-                    if (start == null || start >= 24 * 60) {
+    fun toggle(pick: PlanPick) {
+        open = if (open == pick) null else pick
+    }
+    GlassSheet(
+        backdrop = backdrop,
+        onDismiss = onDismiss,
+        header = {
+            SheetHeader(
+                title = if (item == null) "添加时段" else "修改计划",
+                confirmLabel = if (item == null) "添加" else "完成",
+                confirmEnabled = title.isNotBlank(),
+                backdrop = backdrop,
+                onClose = onDismiss,
+                onConfirm = {
+                    if (start < 0 || start >= 24 * 60) {
                         reject("开始时间写成 08:40 这样。")
-                        return@TextButton
+                        return@SheetHeader
                     }
-                    val end = if (endText.isBlank()) {
-                        null
-                    } else {
-                        val parsed = PlanTime.parseClock(endText)
-                        if (parsed == null) {
-                            reject("结束时间写成 09:20，或留空。")
-                            return@TextButton
-                        }
-                        PlanTime.endAfter(start, parsed)
+                    val savedEnd = end?.let { value ->
+                        if (value >= 24 * 60) value else PlanTime.endAfter(start, value)
+                    }
+                    if (savedEnd != null && savedEnd <= start && savedEnd < 24 * 60) {
+                        reject("结束时间写成 09:20，或留空。")
+                        return@SheetHeader
                     }
                     if (title.isBlank()) {
                         reject("写上这一条的计划。")
-                        return@TextButton
+                        return@SheetHeader
                     }
                     view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                    onSave(date, start, end, title.trim(), note.trim())
-                }) { Text("保存", color = colors.blue, fontWeight = FontWeight.SemiBold) }
+                    onSave(date, start, savedEnd, title.trim(), note.trim())
+                },
+            )
+        },
+    ) {
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp),
+        ) {
+            if (error != null) {
+                Text(error.orEmpty(), color = colors.red, fontSize = 13.sp, lineHeight = 18.sp)
+                Spacer(Modifier.height(8.dp))
             }
+            GlassSection(backdrop) {
+                DateRow("日期", date, open == PlanPick.Date, "plan-date") { toggle(PlanPick.Date) }
+                if (open == PlanPick.Date) {
+                    InlineCalendar(date, "plan-calendar") { date = it }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            GlassSection(backdrop) {
+                ValueRow("开始", PlanTime.formatMinutes(start), open == PlanPick.Start, "plan-start") {
+                    toggle(PlanPick.Start)
+                }
+                if (open == PlanPick.Start) {
+                    TimeWheels(start) { picked ->
+                        end = endWhenStartMoves(start, end, picked)
+                        start = picked
+                    }
+                }
+                Hairline()
+                ValueRow(
+                    "结束",
+                    end?.let(PlanTime::formatMinutes) ?: "选填",
+                    open == PlanPick.End,
+                    "plan-end",
+                ) { toggle(PlanPick.End) }
+                if (open == PlanPick.End) {
+                    TimeWheels(end ?: start) { picked ->
+                        end = PlanTime.endAfter(start, picked)
+                    }
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DurationChoices.forEach { minutes ->
+                    val selected = end?.minus(start) == minutes
+                    Text(
+                        "${minutes}分钟",
+                        color = if (selected) colors.blue else colors.label,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(Capsule())
+                            .background(if (selected) colors.blue.copy(alpha = 0.20f) else colors.track)
+                            .clickable {
+                                end = start + minutes
+                                error = null
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            GlassSection(backdrop) {
+                BorderlessField(title, "标题", colors) {
+                    title = it
+                    error = null
+                }
+                Hairline()
+                BorderlessField(note, "备注", colors) { note = it }
+            }
+        }
     }
 }
 

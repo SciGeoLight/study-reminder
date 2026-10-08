@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -132,12 +133,12 @@ class ScreenShotTest {
         compose.onNodeWithText("添加待办").assertIsDisplayed()
         compose.onNodeWithText("添加图片").assertIsDisplayed()
         writePng(compose.onRoot().captureToImage().asAndroidBitmap(), "学习提醒-v1.7.8-todos-add-$theme.png")
-        compose.onNodeWithText("取消").performClick()
+        compose.onNodeWithContentDescription("关闭").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("阅读一章").performTouchInput { longClick() }
         compose.waitForIdle()
         compose.onNodeWithText("完成").assertIsDisplayed()
-        compose.onNodeWithText("取消").assertIsDisplayed()
+        compose.onNodeWithContentDescription("关闭").assertIsDisplayed()
         compose.onNodeWithText("添加图片").assertIsDisplayed()
         writePng(compose.onRoot().captureToImage().asAndroidBitmap(), "学习提醒-v1.7.8-todos-edit-large-$theme.png")
         compose.onNodeWithTag("date-start").performClick()

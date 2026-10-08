@@ -14,11 +14,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -90,8 +88,6 @@ import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.RoundedCornerStyle
-import com.kyant.shapes.UnevenRoundedRectangle
 import com.partner.studyreminder.ui.icons.StudyIcons
 import com.partner.studyreminder.data.Prefs
 import com.partner.studyreminder.data.Todo
@@ -100,6 +96,8 @@ import com.partner.studyreminder.data.TodoImages
 import com.partner.studyreminder.data.Todos
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
+import com.partner.studyreminder.ui.glass.GlassSheet
+import com.partner.studyreminder.ui.glass.SheetHeader
 import com.partner.studyreminder.ui.glass.GlassUndoBar
 import com.partner.studyreminder.ui.glass.LiquidBottomTab
 import com.partner.studyreminder.ui.glass.LiquidBottomTabs
@@ -114,7 +112,6 @@ import com.partner.studyreminder.ui.glass.squircle
 import com.partner.studyreminder.ui.glass.studyColors
 import java.io.File
 import java.time.LocalDate
-import java.time.YearMonth
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Job
@@ -151,8 +148,6 @@ private fun StudyColors.dot(color: String): Color = when (color) {
     "red" -> red
     else -> blue
 }
-
-private fun dateLabel(date: LocalDate): String = "${date.monthValue}月${date.dayOfMonth}日"
 
 @Composable
 internal fun TodosScreen(
@@ -894,8 +889,6 @@ private fun BoxScope.TodoEditorSheet(
 ) {
     val colors = studyColors()
     val today = PlanTime.today()
-    val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
     var title by remember(existing?.id) { mutableStateOf(existing?.title.orEmpty()) }
     var note by remember(existing?.id) { mutableStateOf(existing?.note.orEmpty()) }
     var start by remember(existing?.id) {
@@ -922,143 +915,46 @@ private fun BoxScope.TodoEditorSheet(
         error = message
         view.performHapticFeedback(HapticFeedbackConstants.REJECT)
     }
-    val sheetShape = UnevenRoundedRectangle(36.dp, 36.dp, 0.dp, 0.dp, RoundedCornerStyle.Continuous)
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val sheetHeight = maxHeight - WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        val sheetPx = with(density) { sheetHeight.toPx() }
-        val offset = remember(sheetPx) { Animatable(0f) }
-        val scrim = ((sheetPx - offset.value) / sheetPx).coerceIn(0f, 1f) * 0.34f
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = scrim))
-                .clickable(interactionSource = null, indication = null) {
-                    photos.forEach { it.file?.delete() }
-                    onDismiss()
-                },
-        )
-        Column(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(sheetHeight)
-                .offset { IntOffset(0, offset.value.roundToInt()) }
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { sheetShape },
-                    effects = {
-                        vibrancy()
-                        blur(2f.dp.toPx())
-                        lens(16f.dp.toPx(), 32f.dp.toPx(), chromaticAberration = true)
-                    },
-                    highlight = { Highlight.Default },
-                    shadow = { Shadow(radius = 16.dp, alpha = 0.12f) },
-                    onDrawSurface = { drawRect(colors.glass) },
-                )
-                .testTag("todo-sheet"),
-        ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .testTag("sheet-handle")
-                    .pointerInput(sheetPx) {
-                        val tracker = VelocityTracker()
-                        var dragOffset = offset.value
-                        var snap: Job? = null
-                        fun settle(current: Float, velocity: Float) {
-                            val draggedDown = current > with(density) { 96.dp.toPx() }
-                            val target = if (velocity > Motion.Fling || draggedDown) sheetPx else 0f
-                            val pending = snap
-                            snap = null
-                            scope.launch {
-                                pending?.cancel()
-                                pending?.join()
-                                offset.animateTo(target, Motion.snappy(), initialVelocity = velocity)
-                                if (target >= sheetPx - 1f) {
-                                    photos.forEach { it.file?.delete() }
-                                    onDismiss()
-                                }
-                            }
-                        }
-                        detectVerticalDragGestures(
-                            onDragStart = {
-                                tracker.resetTracking()
-                                dragOffset = offset.value
-                            },
-                            onVerticalDrag = { change, drag ->
-                                tracker.addPosition(change.uptimeMillis, change.position)
-                                dragOffset = resistedDrag(dragOffset, drag, 0f, sheetPx, sheetPx)
-                                val next = dragOffset
-                                snap?.cancel()
-                                snap = scope.launch { offset.snapTo(next) }
-                            },
-                            onDragEnd = { settle(dragOffset, tracker.calculateVelocity().y) },
-                            onDragCancel = { settle(dragOffset, 0f) },
-                        )
+    fun dismiss() {
+        photos.forEach { it.file?.delete() }
+        onDismiss()
+    }
+    GlassSheet(
+        backdrop = backdrop,
+        onDismiss = { dismiss() },
+        modifier = Modifier.testTag("todo-sheet"),
+        header = {
+            SheetHeader(
+                title = if (existing == null) "添加待办" else "修改待办",
+                confirmLabel = if (existing == null) "添加" else "完成",
+                confirmEnabled = title.isNotBlank(),
+                backdrop = backdrop,
+                onClose = { dismiss() },
+                onConfirm = {
+                    if (title.isBlank()) {
+                        reject("写上标题。")
+                        return@SheetHeader
                     }
-                    .padding(top = 8.dp, bottom = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    Modifier
-                        .size(width = 36.dp, height = 5.dp)
-                        .liquidGlass(backdrop, com.kyant.shapes.Capsule(), colors.glass, blurRadius = 2.dp, refraction = 8.dp, chromatic = false),
-                )
-            }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    "取消",
-                    color = colors.blue,
-                    fontSize = 17.sp,
-                    modifier = Modifier
-                        .clickable(interactionSource = null, indication = null) {
-                            photos.forEach { it.file?.delete() }
-                            onDismiss()
-                        }
-                        .padding(8.dp),
-                )
-                Text(
-                    if (existing == null) "添加待办" else "修改待办",
-                    color = colors.label,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                )
-                Text(
-                    if (existing == null) "添加" else "完成",
-                    color = colors.blue,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clickable(interactionSource = null, indication = null) {
-                            if (title.isBlank()) {
-                                reject("写上标题。")
-                                return@clickable
-                            }
-                            if (end < start) {
-                                reject("结束日期不能早于开始。")
-                                return@clickable
-                            }
-                            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                            onSave(
-                                title.trim(),
-                                note.trim(),
-                                start.toString(),
-                                end.toString(),
-                                if (remindOn) remindDay.toString() else null,
-                                if (remindOn) remindMinutes else null,
-                                groupId,
-                                photos,
-                            )
-                        }
-                        .padding(8.dp),
-                )
-            }
-            Column(
+                    if (end < start) {
+                        reject("结束日期不能早于开始。")
+                        return@SheetHeader
+                    }
+                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                    onSave(
+                        title.trim(),
+                        note.trim(),
+                        start.toString(),
+                        end.toString(),
+                        if (remindOn) remindDay.toString() else null,
+                        if (remindOn) remindMinutes else null,
+                        groupId,
+                        photos,
+                    )
+                },
+            )
+        },
+    ) {
+        Column(
                 Modifier
                     .weight(1f)
                     .verticalScroll(rememberScrollState())
@@ -1206,184 +1102,6 @@ private fun BoxScope.TodoEditorSheet(
                 ActionRow("取消", StudyIcons.Close, colors.label) { photoMenu = false }
             }
         }
-    }
-}
-
-@Composable
-private fun GlassSection(backdrop: Backdrop, content: @Composable () -> Unit) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .liquidGlass(backdrop, squircle(12.dp), studyColors().glass, blurRadius = 2.dp, refraction = 20.dp),
-    ) { content() }
-}
-
-@Composable
-private fun Hairline() {
-    Box(Modifier.padding(start = 16.dp).fillMaxWidth().height(0.5.dp).background(studyColors().separator))
-}
-
-@Composable
-private fun BorderlessField(value: String, placeholder: String, colors: StudyColors, onChange: (String) -> Unit) {
-    BasicTextField(
-        value = value,
-        onValueChange = onChange,
-        textStyle = TextStyle(color = colors.label, fontSize = 17.sp),
-        cursorBrush = SolidColor(colors.blue),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
-        decorationBox = { inner ->
-            Box {
-                if (value.isEmpty()) Text(placeholder, color = colors.tertiary, fontSize = 17.sp)
-                inner()
-            }
-        },
-    )
-}
-
-@Composable
-private fun DateRow(label: String, date: LocalDate, open: Boolean, tag: String, onClick: () -> Unit) {
-    val colors = studyColors()
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .testTag(tag)
-            .clickable(interactionSource = null, indication = null, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, color = colors.label, fontSize = 17.sp, modifier = Modifier.weight(1f))
-        Text(
-            dateLabel(date),
-            color = if (open) Color.White else colors.label,
-            fontSize = 15.sp,
-            modifier = Modifier
-                .clip(com.kyant.shapes.Capsule())
-                .background(if (open) colors.blue else colors.track)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
-        )
-    }
-}
-
-@Composable
-private fun InlineCalendar(selected: LocalDate, tag: String, onPick: (LocalDate) -> Unit) {
-    val colors = studyColors()
-    var month by remember(selected) { mutableStateOf(YearMonth.from(selected)) }
-    val weeks = listOf("一", "二", "三", "四", "五", "六", "日")
-    val today = PlanTime.today()
-    Column(Modifier.testTag(tag).padding(horizontal = 8.dp, vertical = 4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "${month.year}年${month.monthValue}月",
-                color = colors.label,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.weight(1f).padding(start = 8.dp),
-            )
-            Text("‹", color = colors.blue, fontSize = 22.sp, modifier = Modifier.clickable(interactionSource = null, indication = null) { month = month.minusMonths(1) }.padding(8.dp))
-            Text("›", color = colors.blue, fontSize = 22.sp, modifier = Modifier.clickable(interactionSource = null, indication = null) { month = month.plusMonths(1) }.padding(8.dp))
-        }
-        Row(Modifier.fillMaxWidth()) {
-            weeks.forEach { day ->
-                Text(day, color = colors.tertiary, fontSize = 13.sp, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
-            }
-        }
-        val lead = month.atDay(1).dayOfWeek.value - 1
-        val count = month.lengthOfMonth()
-        val rows = (lead + count + 6) / 7
-        for (row in 0 until rows) {
-            Row(Modifier.fillMaxWidth()) {
-                for (column in 0 until 7) {
-                    val day = row * 7 + column - lead + 1
-                    Box(Modifier.weight(1f).height(36.dp), contentAlignment = Alignment.Center) {
-                        if (day in 1..count) {
-                            val cell = month.atDay(day)
-                            val on = cell == selected
-                            Box(
-                                Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(if (on) colors.blue else Color.Transparent)
-                                    .clickable(interactionSource = null, indication = null) { onPick(cell) },
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    "$day",
-                                    color = when {
-                                        on -> Color.White
-                                        cell == today -> colors.blue
-                                        else -> colors.label
-                                    },
-                                    fontSize = 16.sp,
-                                    fontWeight = if (on || cell == today) FontWeight.SemiBold else FontWeight.Normal,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TimeWheels(minutes: Int, onChange: (Int) -> Unit) {
-    val colors = studyColors()
-    val hour = minutes / 60
-    val minute = minutes % 60
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Wheel("小时", hour, 0..23, colors) { onChange(it * 60 + minute) }
-        Text(":", color = colors.label, fontSize = 22.sp)
-        Wheel("分钟", minute, 0..59, colors) { onChange(hour * 60 + it) }
-    }
-}
-
-@Composable
-private fun Wheel(label: String, value: Int, range: IntRange, colors: StudyColors, onChange: (Int) -> Unit) {
-    val prev = if (value - 1 < range.first) range.last else value - 1
-    val next = if (value + 1 > range.last) range.first else value + 1
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 12.dp)) {
-        Text(label, color = colors.secondary, fontSize = 13.sp)
-        Text(
-            "%02d".format(prev),
-            color = colors.tertiary,
-            fontSize = 15.sp,
-            modifier = Modifier.clickable(interactionSource = null, indication = null) { onChange(prev) }.padding(6.dp),
-        )
-        Text(
-            "%02d".format(value),
-            color = colors.label,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier
-                .clip(squircle(8.dp))
-                .background(colors.track)
-                .pointerInput(value) {
-                    var accum = 0f
-                    detectVerticalDragGestures { _, dy ->
-                        accum += dy
-                        val step = 28.dp.toPx()
-                        if (accum > step) {
-                            accum = 0f
-                            onChange(prev)
-                        } else if (accum < -step) {
-                            accum = 0f
-                            onChange(next)
-                        }
-                    }
-                }
-                .padding(horizontal = 16.dp, vertical = 4.dp),
-        )
-        Text(
-            "%02d".format(next),
-            color = colors.tertiary,
-            fontSize = 15.sp,
-            modifier = Modifier.clickable(interactionSource = null, indication = null) { onChange(next) }.padding(6.dp),
-        )
-    }
 }
 
 @Composable
