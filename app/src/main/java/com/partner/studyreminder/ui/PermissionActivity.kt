@@ -76,6 +76,7 @@ class PermissionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installPush()
         edgeToEdge()
         setContent {
             StudyTheme {
@@ -120,10 +121,10 @@ class PermissionActivity : ComponentActivity() {
                         ),
                     ),
                     doneLabel = if (Prefs.sawPermissions(this)) "完成" else "进入应用",
-                    onBack = { finish() },
+                    onBack = { finishPush() },
                     onDone = {
                         Prefs.setSawPermissions(this, true)
-                        finish()
+                        finishPush()
                     },
                 )
             }

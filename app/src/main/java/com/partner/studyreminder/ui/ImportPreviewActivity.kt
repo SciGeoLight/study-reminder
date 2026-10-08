@@ -55,16 +55,17 @@ import com.partner.studyreminder.ui.theme.toast
 class ImportPreviewActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installRise()
         edgeToEdge()
         val raw = intent.getStringExtra(EXTRA_RAW)
         if (raw.isNullOrBlank()) {
-            finish()
+            finishRise()
             return
         }
         val parsed = PlanParsers.parseAny(raw)
         if (parsed.items.isEmpty() && parsed.todos.isEmpty()) {
             toast("没有识别到计划")
-            finish()
+            finishRise()
             return
         }
         setContent {
@@ -72,7 +73,7 @@ class ImportPreviewActivity : ComponentActivity() {
                 ImportScreen(
                     parsed = parsed,
                     summary = summary(parsed),
-                    onCancel = { finish() },
+                    onCancel = { finishRise() },
                     onConfirm = { confirm(parsed) },
                 )
             }
@@ -123,7 +124,7 @@ class ImportPreviewActivity : ComponentActivity() {
         toast(note)
         if (first != null) setResult(RESULT_OK, Intent().putExtra(AlarmContract.EXTRA_DATE, first))
         else setResult(RESULT_OK)
-        finish()
+        finishRise()
     }
 
     companion object {

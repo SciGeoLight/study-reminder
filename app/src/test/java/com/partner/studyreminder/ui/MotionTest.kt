@@ -4,6 +4,7 @@ import com.partner.studyreminder.parse.PlanTime
 import java.time.ZonedDateTime
 import kotlin.math.abs
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -48,5 +49,21 @@ class MotionTest {
         assertEquals(29_500L, millisUntilNextBeijingMinute(half))
         val boundary = ZonedDateTime.of(2026, 10, 8, 14, 31, 0, 0, PlanTime.ZONE).toInstant()
         assertEquals(60_000L, millisUntilNextBeijingMinute(boundary))
+    }
+
+    @Test
+    fun ringsFollowSystemAnimationScales() {
+        assertTrue(systemAnimationsEnabled(1f, 1f))
+        assertTrue(systemAnimationsEnabled(0.5f, 1f))
+        assertFalse(systemAnimationsEnabled(0f, 1f))
+        assertFalse(systemAnimationsEnabled(1f, 0f))
+    }
+
+    @Test
+    fun viewerScrimFadesAsThePhotoIsDraggedDown() {
+        assertEquals(0.92f, viewerScrimAlpha(0f, 1000f), 0.001f)
+        assertEquals(0.46f, viewerScrimAlpha(500f, 1000f), 0.001f)
+        assertEquals(0f, viewerScrimAlpha(1000f, 1000f), 0.001f)
+        assertEquals(0.92f, viewerScrimAlpha(-20f, 1000f), 0.001f)
     }
 }

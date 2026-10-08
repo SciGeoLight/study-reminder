@@ -15,6 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -72,6 +74,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -1401,6 +1404,12 @@ private fun Thumb(photo: DraftPhoto, todoId: String?, size: androidx.compose.ui.
     }
 }
 
+internal fun viewerScrimAlpha(offset: Float, span: Float): Float {
+    if (span <= 0f) return 0.92f
+    val progress = (offset / span).coerceIn(0f, 1f)
+    return 0.92f * (1f - progress)
+}
+
 @Composable
 private fun BoxScope.PhotoViewer(
     photos: List<DraftPhoto>,
@@ -1418,7 +1427,15 @@ private fun BoxScope.PhotoViewer(
         zoom = (zoom * zoomChange).coerceIn(1f, 4f)
         pan = if (zoom <= 1.02f) Offset.Zero else pan + panChange
     }
-    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.92f))) {
+    val scope = rememberCoroutineScope()
+    val drag = remember { Animatable(0f) }
+    var span by remember { mutableFloatStateOf(1f) }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onSizeChanged { span = it.height.toFloat().coerceAtLeast(1f) }
+            .background(Color.Black.copy(alpha = viewerScrimAlpha(drag.value, span))),
+    ) {
         val context = LocalContext.current
         val bitmap = remember(photo.key) {
             photo.storedName?.let { TodoImages.thumb(TodoImages.file(context.filesDir, todoId, it), 1600)?.asImageBitmap() }
@@ -1429,6 +1446,7 @@ private fun BoxScope.PhotoViewer(
                 contentDescription = "待办图片",
                 modifier = Modifier
                     .fillMaxSize()
+                    .offset { IntOffset(0, drag.value.roundToInt()) }
                     .graphicsLayer {
                         scaleX = zoom
                         scaleY = zoom
@@ -1436,6 +1454,54 @@ private fun BoxScope.PhotoViewer(
                         translationY = pan.y
                     }
                     .transformable(transform)
+                    .pointerInput(photo.key) {
+                        detectTapGestures(
+                            onDoubleTap = {
+                                if (zoom < 1.5f) {
+                                    zoom = 2f
+                                } else {
+                                    zoom = 1f
+                                    pan = Offset.Zero
+                                }
+                            },
+                        )
+                    }
+                    .pointerInput(photo.key, zoom <= 1.05f) {
+                        if (zoom > 1.05f) return@pointerInput
+                        val tracker = VelocityTracker()
+                        var snap: Job? = null
+                        var dragOffset = drag.value
+                        fun settle(velocity: Float) {
+                            val height = size.height.toFloat().coerceAtLeast(1f)
+                            val strongBack = velocity < -Motion.Fling
+                            val dismiss = !strongBack && (velocity > Motion.Fling || dragOffset > height * 0.22f)
+                            val target = if (dismiss) height else 0f
+                            val pending = snap
+                            snap = null
+                            scope.launch {
+                                pending?.cancel()
+                                pending?.join()
+                                drag.animateTo(target, Motion.snappy(), initialVelocity = velocity)
+                                if (dismiss) onClose()
+                            }
+                        }
+                        detectVerticalDragGestures(
+                            onDragStart = {
+                                tracker.resetTracking()
+                                dragOffset = drag.value
+                            },
+                            onDragEnd = { settle(tracker.calculateVelocity().y) },
+                            onDragCancel = { settle(0f) },
+                            onVerticalDrag = { change, delta ->
+                                tracker.addPosition(change.uptimeMillis, change.position)
+                                val height = size.height.toFloat().coerceAtLeast(1f)
+                                dragOffset = resistedDrag(dragOffset, delta, 0f, height, height)
+                                val next = dragOffset
+                                snap?.cancel()
+                                snap = scope.launch { drag.snapTo(next) }
+                            },
+                        )
+                    }
                     .pointerInput(photo.key, photos.size, index) {
                         var accum = 0f
                         detectHorizontalDragGestures(
@@ -1460,14 +1526,41 @@ private fun BoxScope.PhotoViewer(
         GlassIconButton(
             onClose,
             backdrop,
-            modifier = Modifier.align(Alignment.TopStart).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp),
-        ) { Icon(StudyIcons.Close, contentDescription = "关闭", tint = studyColors().label) }
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(12.dp)
+                .offset { IntOffset(0, drag.value.roundToInt()) },
+        ) { Icon(StudyIcons.Close, contentDescription = "关闭", tint = Color.White) }
         if (photo.storedName != null) {
             GlassIconButton(
                 { onRemove(photo.storedName) },
                 backdrop,
-                modifier = Modifier.align(Alignment.TopEnd).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp),
-            ) { Icon(StudyIcons.Delete, contentDescription = "移除图片", tint = studyColors().red) }
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(12.dp)
+                    .offset { IntOffset(0, drag.value.roundToInt()) },
+            ) { Icon(StudyIcons.Delete, contentDescription = "移除图片", tint = Color.White) }
+        }
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = 18.dp)
+                .offset { IntOffset(0, drag.value.roundToInt()) },
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            photos.forEachIndexed { dot, _ ->
+                val selected = dot == index
+                Box(
+                    Modifier
+                        .size(if (selected) 7.dp else 6.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = if (selected) 0.92f else 0.38f)),
+                )
+            }
         }
     }
 }

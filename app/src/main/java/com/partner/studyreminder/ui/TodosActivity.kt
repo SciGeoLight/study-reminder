@@ -134,12 +134,13 @@ class TodosActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        installPush()
         edgeToEdge()
         setContent {
             StudyTheme {
                 TodosScreen(
                     refreshKey = tick,
-                    onBack = { finish() },
+                    onBack = { finishPush() },
                     onToggle = { todo ->
                         Todos.of(this).setDone(todo.id, !todo.done)
                         AlarmScheduler.rescheduleAll(this)

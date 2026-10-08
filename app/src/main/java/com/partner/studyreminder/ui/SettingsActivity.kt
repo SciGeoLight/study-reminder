@@ -112,6 +112,7 @@ class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         backgroundStamp = Backgrounds.stamp(this)
         super.onCreate(savedInstanceState)
+        installPush()
         edgeToEdge()
         form.island = Prefs.isIslandMode(this)
         val minutes = Prefs.preMinutes(this)
@@ -124,7 +125,7 @@ class SettingsActivity : ComponentActivity() {
                 SettingsScreen(
                     form = form,
                     version = "学习提醒 ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
-                    onBack = { finish() },
+                    onBack = { finishPush() },
                     onSave = { save() },
                     onSync = { syncNow() },
                     backgroundStamp = backgroundStamp,

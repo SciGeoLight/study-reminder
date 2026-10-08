@@ -62,6 +62,14 @@ fun resistedDrag(current: Float, delta: Float, min: Float, max: Float, span: Flo
     return current + delta * (band / (band + overflow))
 }
 
+/**
+ * Rings and other decorative motion stay off when the system animator duration
+ * scale or the transition animation scale is 0 (关闭动画 / reduce motion).
+ */
+internal fun systemAnimationsEnabled(animatorScale: Float, transitionScale: Float): Boolean {
+    return animatorScale > 0f && transitionScale > 0f
+}
+
 /** Milliseconds until the next Asia/Shanghai minute. An exact boundary waits a full minute. */
 fun millisUntilNextBeijingMinute(now: Instant = Instant.now()): Long {
     val local = now.atZone(PlanTime.ZONE)

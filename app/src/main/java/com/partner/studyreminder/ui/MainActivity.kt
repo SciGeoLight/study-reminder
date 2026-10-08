@@ -67,10 +67,10 @@ class MainActivity : ComponentActivity() {
                         viewing = viewing.plusDays(1)
                     },
                     onToday = { viewing = PlanTime.today() },
-                    onPermissions = { startActivity(Intent(this, PermissionActivity::class.java)) },
-                    onSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
+                    onPermissions = { launchPush(Intent(this, PermissionActivity::class.java)) },
+                    onSettings = { launchPush(Intent(this, SettingsActivity::class.java)) },
                     onImportClipboard = { importClipboard() },
-                    onOpenTodos = { startActivity(Intent(this, TodosActivity::class.java)) },
+                    onOpenTodos = { launchPush(Intent(this, TodosActivity::class.java)) },
                     onOpenFile = {
                         openFile.launch(
                             arrayOf("text/calendar", "text/plain", "application/octet-stream", "application/ics"),
@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         if (!Prefs.sawPermissions(this)) {
-            startActivity(Intent(this, PermissionActivity::class.java))
+            launchPush(Intent(this, PermissionActivity::class.java))
         }
     }
 
@@ -168,7 +168,8 @@ class MainActivity : ComponentActivity() {
             toast("没有识别到计划。$hint")
             return
         }
-        preview.launch(
+        launchRise(
+            preview,
             Intent(this, ImportPreviewActivity::class.java).putExtra(ImportPreviewActivity.EXTRA_RAW, text),
         )
     }
