@@ -67,10 +67,10 @@ class MainActivity : ComponentActivity() {
                         viewing = viewing.plusDays(1)
                     },
                     onToday = { viewing = PlanTime.today() },
-                    onPermissions = { launchPush(Intent(this, PermissionActivity::class.java)) },
-                    onSettings = { launchPush(Intent(this, SettingsActivity::class.java)) },
+                    onPermissions = { startActivity(Intent(this, PermissionActivity::class.java)) },
+                    onSettings = { startActivity(Intent(this, SettingsActivity::class.java)) },
                     onImportClipboard = { importClipboard() },
-                    onOpenTodos = { launchPush(Intent(this, TodosActivity::class.java)) },
+                    onOpenTodos = { startActivity(Intent(this, TodosActivity::class.java)) },
                     onOpenFile = {
                         openFile.launch(
                             arrayOf("text/calendar", "text/plain", "application/octet-stream", "application/ics"),
@@ -79,14 +79,13 @@ class MainActivity : ComponentActivity() {
                     onTestAlarm = { testAlarm() },
                     onClearDay = { clearDay() },
                     onDelete = { deleteItem(it) },
-                    onRestore = { item, title -> restoreItem(item, title) },
                     onAdd = { date, start, end, title, note -> addItem(date, start, end, title, note) },
                     onEdit = { item, date, start, end, title, note -> updateItem(item, date, start, end, title, note) },
                 )
             }
         }
         if (!Prefs.sawPermissions(this)) {
-            launchPush(Intent(this, PermissionActivity::class.java))
+            startActivity(Intent(this, PermissionActivity::class.java))
         }
     }
 
@@ -168,8 +167,7 @@ class MainActivity : ComponentActivity() {
             toast("没有识别到计划。$hint")
             return
         }
-        launchRise(
-            preview,
+        preview.launch(
             Intent(this, ImportPreviewActivity::class.java).putExtra(ImportPreviewActivity.EXTRA_RAW, text),
         )
     }
@@ -221,12 +219,6 @@ class MainActivity : ComponentActivity() {
     private fun deleteItem(item: PlanItem) {
         val removed = Plans.of(this).deleteItem(item.id)
         if (removed != null) AlarmScheduler.cancelItems(this, listOf(removed))
-        AlarmScheduler.rescheduleAll(this)
-        tick++
-    }
-
-    private fun restoreItem(item: PlanItem, dayTitle: String) {
-        Plans.of(this).insertItem(item, dayTitle)
         AlarmScheduler.rescheduleAll(this)
         tick++
     }

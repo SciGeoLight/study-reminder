@@ -189,26 +189,6 @@ class PlanRepositoryTest {
     }
 
     @Test
-    fun insertItemPutsTheSameRowBack() {
-        val file = tempFile()
-        val repo = PlanRepository(file)
-        repo.replaceDates(TextPlanParser.parse("#PLAN 2026-09-27 标题\n08:00-09:00 自习 | 笔记").items)
-        val item = repo.day("2026-09-27").items.single()
-        assertEquals("自习", repo.deleteItem(item.id)?.title)
-        assertTrue(repo.day("2026-09-27").items.isEmpty())
-        repo.insertItem(item, "标题")
-        val restored = repo.day("2026-09-27")
-        assertEquals("标题", restored.title)
-        assertEquals(item.id, restored.items.single().id)
-        assertEquals(item.source, restored.items.single().source)
-        assertEquals(item.anchor, restored.items.single().anchor)
-        assertEquals("笔记", restored.items.single().note)
-        repo.insertItem(item, "别的标题")
-        assertEquals(1, repo.day("2026-09-27").items.size)
-        assertEquals("标题", repo.day("2026-09-27").title)
-    }
-
-    @Test
     fun jsonRoundTripKeepsNewlineInNote() {
         val parsed = MiniJson.parse(MiniJson.write(linkedMapOf("note" to "一\n二\"三"))) as Map<*, *>
         assertEquals("一\n二\"三", parsed["note"])

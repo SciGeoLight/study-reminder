@@ -172,7 +172,7 @@ echo "sdk.dir=/你的/Android/sdk" > local.properties
 
 安装包在 `app/build/outputs/apk/release/app-release.apk`。
 
-`versionCode` 为 25，`versionName` 为 1.8.0。1.8.0 是液态玻璃 UI 改版（S0–S9：四档 Glass、动效、线图标、底部胶囊、GlassSheet、待办磁贴、设置/权限/全屏提醒等）。待办页按 iOS 提醒事项的方式排版，每条待办用和主界面计划卡片同一套液态玻璃。点卡片展开备注和图片，点圆圈才标记完成，长按打开修改。底部分组条是「全部」加最多 3 个外露分组，最右一格是「…」。点「…」可以切到没外露的分组（含未分组）并勾选哪些分组留在底栏。深色模式选中块是亮拇指、深色字。添加和修改待办一打开就是整页。targetSdk 保持 36，这样装在 Android 17 上不会提前打开只对 target 37 生效的限制；实时活动、精确闹钟和全屏提醒按系统版本（16 及以上，含 17）启用。闹钟最多同时登记 80 个临近提醒，更远的会在到点后补上。minSdk 33，compileSdk 37。界面用 Jetpack Compose，液态玻璃来自 [Backdrop](https://kyant.gitbook.io/backdrop) `io.github.kyant0:backdrop:2.0.1`（模糊、透镜折射、色散和镜面高光）。最低 Android 13，不做更早系统的实心回退。启动图标是白描的圆弧加中心圆点，配近黑渐变底。
+`versionCode` 为 24，`versionName` 为 1.7.8。界面以 1.5.0 的液态玻璃为准。待办页按 iOS 提醒事项的方式排版，每条待办用和主界面计划卡片同一套液态玻璃。点卡片展开备注和图片，点圆圈才标记完成，长按打开修改。底部分组条是「全部」加最多 3 个外露分组，最右一格是「…」。点「…」可以切到没外露的分组（含未分组）并勾选哪些分组留在底栏。深色模式选中块是亮拇指、深色字。添加和修改待办一打开就是整页。targetSdk 保持 36，这样装在 Android 17 上不会提前打开只对 target 37 生效的限制；实时活动、精确闹钟和全屏提醒按系统版本（16 及以上，含 17）启用。闹钟最多同时登记 80 个临近提醒，更远的会在到点后补上。minSdk 33，compileSdk 37。界面用 Jetpack Compose，液态玻璃来自 [Backdrop](https://kyant.gitbook.io/backdrop) `io.github.kyant0:backdrop:2.0.1`（模糊、透镜折射、色散和镜面高光）。最低 Android 13，不做更早系统的实心回退。启动图标是白描的圆弧加中心圆点，配近黑渐变底。
 
 签名私钥不在这个公开仓库里。要打出能覆盖安装已有「学习提醒」的包，必须用同一张发布证书，证书 SHA-256 是 `e830f4dbdea35c5f2867fa1a7c7adb7e107afe424ad506d1caef320225c5ebfc`。把 `.jks` 放到 `keystore/`（该目录已被忽略），复制 `keystore.properties.example` 为 `keystore.properties` 并填入口令与别名。有这份文件时，debug 和 release 共用这把钥匙。没有它时 `./gradlew test` 仍可运行；`assembleRelease` 会拒绝打包。
 

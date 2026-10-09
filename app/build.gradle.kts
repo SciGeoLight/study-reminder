@@ -22,8 +22,8 @@ android {
         applicationId = "com.partner.studyreminder"
         minSdk = 33
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.8.0"
+        versionCode = 24
+        versionName = "1.7.8"
     }
 
     signingConfigs {
@@ -87,6 +87,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("io.github.kyant0:backdrop:2.0.1")
     implementation("io.github.kyant0:shapes:1.2.1")

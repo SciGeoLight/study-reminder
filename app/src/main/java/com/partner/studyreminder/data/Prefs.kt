@@ -8,7 +8,6 @@ object Prefs {
     private const val PRE_MINUTES = "pre_minutes"
     private const val SYNC_URL = "sync_url"
     private const val SYNC_MESSAGE = "sync_message"
-    private const val SYNC_OK_AT = "sync_ok_at"
     private const val AUTOSTART = "autostart_confirmed"
     private const val REMINDER_MODE = "reminder_mode"
     private const val ACTIVE_BLOCK = "active_block"
@@ -51,15 +50,8 @@ object Prefs {
     fun syncMessage(context: Context): String = sp(context).getString(SYNC_MESSAGE, "").orEmpty()
 
     fun setSyncMessage(context: Context, message: String) {
-        val editor = sp(context).edit().putString(SYNC_MESSAGE, message)
-        if (syncMessageRecordsSuccess(message)) {
-            editor.putLong(SYNC_OK_AT, System.currentTimeMillis())
-        }
-        editor.apply()
+        sp(context).edit().putString(SYNC_MESSAGE, message).apply()
     }
-
-    /** Epoch millis of the last completed sync, or 0 when none has succeeded. */
-    fun syncSuccessAt(context: Context): Long = sp(context).getLong(SYNC_OK_AT, 0L)
 
     fun autostartConfirmed(context: Context): Boolean = sp(context).getBoolean(AUTOSTART, false)
 
@@ -129,19 +121,6 @@ object Prefs {
             .filter { it.isNotEmpty() }
             .distinct()
             .take(TODO_BAR_LIMIT)
-    }
-
-    /**
-     * A completed fetch, including one that recognized nothing.
-     * Failures and "won't sync" checks do not move the last-success clock.
-     */
-    internal fun syncMessageRecordsSuccess(message: String): Boolean {
-        if (message.startsWith("同步失败")) return false
-        if (message.startsWith("没有填写")) return false
-        if (message.startsWith("网址要以")) return false
-        return message.startsWith("已同步") ||
-            message.startsWith("待办") ||
-            message.startsWith("同步完成")
     }
 
     fun setTodoBarGroups(context: Context, ids: List<String>) {

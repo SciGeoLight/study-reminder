@@ -5,11 +5,8 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
@@ -18,8 +15,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
-import androidx.work.Configuration
-import androidx.work.WorkManager
 import com.partner.studyreminder.data.Plans
 import com.partner.studyreminder.data.Prefs
 import com.partner.studyreminder.data.Todos
@@ -105,13 +100,6 @@ class ScreenShotTest {
         com.partner.studyreminder.ui.theme.ThemeMode.notifyChanged()
         val scenario = ActivityScenario.launch(TodosActivity::class.java)
         compose.waitForIdle()
-        compose.onNodeWithText("未完成").assertIsDisplayed()
-        compose.onNodeWithText("今天到期").assertIsDisplayed()
-        compose.onAllNodesWithText("已逾期").assertCountEquals(2)
-        compose.onNodeWithTag("tile-今天").assertIsDisplayed()
-        compose.onNodeWithTag("tile-已逾期").assertIsDisplayed()
-        compose.onNodeWithTag("tile-全部").assertIsDisplayed()
-        compose.onNodeWithTag("tile-已完成").assertIsDisplayed()
         compose.onNodeWithText("阅读一章").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("带着问题").assertIsDisplayed()
@@ -144,12 +132,12 @@ class ScreenShotTest {
         compose.onNodeWithText("添加待办").assertIsDisplayed()
         compose.onNodeWithText("添加图片").assertIsDisplayed()
         writePng(compose.onRoot().captureToImage().asAndroidBitmap(), "学习提醒-v1.7.8-todos-add-$theme.png")
-        compose.onNodeWithContentDescription("关闭").performClick()
+        compose.onNodeWithText("取消").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("阅读一章").performTouchInput { longClick() }
         compose.waitForIdle()
         compose.onNodeWithText("完成").assertIsDisplayed()
-        compose.onNodeWithContentDescription("关闭").assertIsDisplayed()
+        compose.onNodeWithText("取消").assertIsDisplayed()
         compose.onNodeWithText("添加图片").assertIsDisplayed()
         writePng(compose.onRoot().captureToImage().asAndroidBitmap(), "学习提醒-v1.7.8-todos-edit-large-$theme.png")
         compose.onNodeWithTag("date-start").performClick()
@@ -163,34 +151,6 @@ class ScreenShotTest {
         compose.onNodeWithTag("group-picker").performScrollTo().assertIsDisplayed()
         writePng(compose.onRoot().captureToImage().asAndroidBitmap(), "学习提醒-v1.7.8-todos-groups-$theme.png")
         scenario.close()
-    }
-
-    @Test(timeout = 120_000)
-    fun settingsAndPermissionsShowTheirTitles() {
-        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
-        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-        Prefs.setSawPermissions(context, true)
-        Prefs.setTheme(context, Prefs.THEME_LIGHT)
-        com.partner.studyreminder.ui.theme.ThemeMode.notifyChanged()
-        // Robolectric does not run WorkManagerInitializer. Closing settings saves and schedules sync.
-        try {
-            WorkManager.getInstance(context)
-        } catch (_: IllegalStateException) {
-            WorkManager.initialize(context, Configuration.Builder().build())
-        }
-        val settings = ActivityScenario.launch(SettingsActivity::class.java)
-        compose.waitForIdle()
-        compose.onNodeWithText("设置").assertIsDisplayed()
-        compose.onNodeWithText("外观").assertIsDisplayed()
-        compose.onNodeWithText("提前提醒").performScrollTo().assertIsDisplayed()
-        compose.onAllNodesWithText("保存").assertCountEquals(0)
-        settings.close()
-        val permissions = ActivityScenario.launch(PermissionActivity::class.java)
-        compose.waitForIdle()
-        compose.onNodeWithText("权限").assertIsDisplayed()
-        compose.onNodeWithText("通知").assertIsDisplayed()
-        compose.onNodeWithText("我已允许").performScrollTo().assertIsDisplayed()
-        permissions.close()
     }
 
     private fun capture(name: String, theme: String, themePref: String, activity: Class<out android.app.Activity>) {

@@ -164,18 +164,6 @@ class PlanRepository(private val file: File) {
         removed
     }
 
-    /** Puts [item] back with its original id and source. Used by the home undo bar. */
-    fun insertItem(item: PlanItem, dayTitle: String = "") = synchronized(lock) {
-        val store = read()
-        val already = store.days.values.any { day -> day.items.any { it.id == item.id } }
-        if (already) return@synchronized
-        val existing = store.days[item.date]
-        val title = existing?.title?.takeIf { it.isNotBlank() } ?: dayTitle
-        val items = (existing?.items.orEmpty() + item).sortedBy { it.startMinutes }
-        store.days[item.date] = DayPlan(item.date, title, items)
-        write(store)
-    }
-
     fun clearDay(date: String): List<PlanItem> = synchronized(lock) {
         val store = read()
         val removed = store.days[date]?.items.orEmpty()
