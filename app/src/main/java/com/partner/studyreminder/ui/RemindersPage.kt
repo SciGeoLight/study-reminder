@@ -531,9 +531,8 @@ private fun SegmentedFilters(
     onFilter: (String) -> Unit,
 ) {
     val colors = studyColors()
-    val lightTheme = colors.label.red < 0.5f
-    val selectedColor = if (lightTheme) colors.label else Color(0xFF1C1C1E)
-    val idleColor = if (lightTheme) colors.secondary else Color.White.copy(alpha = 0.84f)
+    val selectedColor = colors.label
+    val idleColor = colors.secondary
     val exposed = exposedGroups(groups, pinned)
     val hiddenGroup = filter != FILTER_ALL && filter != FILTER_NONE && exposed.none { it.id == filter }
     val moreLabel = if (hiddenGroup) groups.firstOrNull { it.id == filter }?.name ?: "…" else "…"
@@ -566,6 +565,7 @@ private fun SegmentedFilters(
                     if (chip.id == FILTER_MORE) onMore() else onFilter(chip.id)
                 },
                 modifier = Modifier.testTag(if (chip.id == FILTER_MORE) "filter-more" else "filter-${chip.label}"),
+                tabIndex = index,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                     if (chip.dot != null) {
@@ -873,25 +873,32 @@ private fun TodoStatChips(counts: TodoChipCounts, backdrop: Backdrop) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         StatChip(backdrop) {
-            Text("未完成", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text("${counts.open}", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("未完成", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("${counts.open}", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
         StatChip(backdrop) {
-            Text("今天到期", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text("${counts.dueToday}", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text("今天到期", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Text("${counts.dueToday}", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }
         StatChip(backdrop) {
-            Text("已逾期", color = colors.label, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text(
-                "${counts.overdue}",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
+            Text("已逾期", color = colors.label, fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Box(
+                Modifier
+                    .height(18.dp)
                     .clip(Capsule())
                     .background(colors.red)
-                    .padding(horizontal = 7.dp, vertical = 1.dp),
-            )
+                    .padding(horizontal = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "${counts.overdue}",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    lineHeight = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
@@ -902,7 +909,8 @@ private fun StatChip(backdrop: Backdrop, content: @Composable RowScope.() -> Uni
     Row(
         Modifier
             .glass(backdrop, GlassTier.Control, Capsule(), surface = colors.glass)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .height(32.dp)
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         content = content,

@@ -3,6 +3,8 @@ package com.partner.studyreminder.ui.glass
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -30,15 +33,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -70,6 +79,17 @@ import kotlinx.coroutines.launch
  */
 internal val LocalLiquidBottomTabScale = staticCompositionLocalOf { { 1f } }
 
+/** Animated thumb position in tab units. 0 is the first cell. */
+internal val SegmentedIndicatorIndexKey = SemanticsPropertyKey<Float>("SegmentedIndicatorIndex")
+
+/** Thumb translation in px, the same value drawn as `translationX` in LTR. */
+internal val SegmentedIndicatorOffsetPxKey = SemanticsPropertyKey<Float>("SegmentedIndicatorOffsetPx")
+
+/** Width of one cell in px. A settled thumb on cell N sits at N times this width. */
+internal val SegmentedTabWidthPxKey = SemanticsPropertyKey<Float>("SegmentedTabWidthPx")
+
+private val LocalLiquidBottomTabSlide = staticCompositionLocalOf<(Int) -> Unit> { {} }
+
 @Composable
 fun LiquidBottomTabs(
     selectedTabIndex: () -> Int,
@@ -92,8 +112,13 @@ fun LiquidBottomTabs(
     val tabWidthPx = remember { floatArrayOf(1f) }
     val animationScope = rememberCoroutineScope()
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
+    val touchSlop = LocalViewConfiguration.current.touchSlop
     val offsetAnimation = remember { Animatable(0f) }
     var currentIndex by remember(count) { mutableIntStateOf(selectedTabIndex().coerceIn(0, count - 1)) }
+    val indexHolder = remember { intArrayOf(currentIndex) }
+    indexHolder[0] = currentIndex
+    val selectedState = rememberUpdatedState(selectedTabIndex)
+    val onTabSelectedState = rememberUpdatedState(onTabSelected)
     val dampedDragAnimation = remember(animationScope, count) {
         DampedDragAnimation(
             animationScope = animationScope,
@@ -103,58 +128,32 @@ fun LiquidBottomTabs(
             initialScale = 1f,
             pressedScale = 78f / 56f,
             onDragStarted = {},
-            onDragStopped = {
-                val targetIndex = targetValue.fastRoundToInt().fastCoerceIn(0, count - 1)
-                currentIndex = targetIndex
-                animateToValue(targetIndex.toFloat())
-                animationScope.launch {
-                    offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
-                }
-            },
-            onDrag = { _, dragAmount ->
-                val width = tabWidthPx[0].coerceAtLeast(1f)
-                updateValue(
-                    (targetValue + dragAmount.x / width * if (isLtr) 1f else -1f)
-                        .fastCoerceIn(0f, (count - 1).toFloat()),
-                )
-                animationScope.launch {
-                    offsetAnimation.snapTo(offsetAnimation.value + dragAmount.x)
-                }
-            },
+            onDragStopped = {},
+            onDrag = { _, _ -> },
         )
     }
+    val slideToTab = { index: Int ->
+        val target = index.coerceIn(0, count - 1)
+        currentIndex = target
+        dampedDragAnimation.slideTo(target.toFloat())
+    }
     LaunchedEffect(count) {
-        snapshotFlow { selectedTabIndex().coerceIn(0, count - 1) }
-            .collectLatest { index -> currentIndex = index }
+        snapshotFlow { selectedState.value().coerceIn(0, count - 1) }
+            .drop(1)
+            .collectLatest { index ->
+                currentIndex = index
+                dampedDragAnimation.slideTo(index.toFloat())
+            }
     }
     LaunchedEffect(settleKey) {
         if (settleKey == 0) return@LaunchedEffect
-        val index = selectedTabIndex().coerceIn(0, count - 1)
+        val index = selectedState.value().coerceIn(0, count - 1)
         currentIndex = index
-        dampedDragAnimation.animateToValue(index.toFloat())
-    }
-    LaunchedEffect(dampedDragAnimation) {
-        snapshotFlow { currentIndex }
-            .drop(1)
-            .collectLatest { index ->
-                dampedDragAnimation.animateToValue(index.toFloat())
-                onTabSelected(index)
-            }
-    }
-    val interactiveHighlight = remember(animationScope, dampedDragAnimation) {
-        InteractiveHighlight(
-            animationScope = animationScope,
-            position = { size, _ ->
-                val width = tabWidthPx[0].coerceAtLeast(1f)
-                Offset(
-                    if (isLtr) (dampedDragAnimation.value + 0.5f) * width
-                    else size.width - (dampedDragAnimation.value + 0.5f) * width,
-                    size.height / 2f,
-                )
-            },
-        )
+        dampedDragAnimation.slideTo(index.toFloat())
+        offsetAnimation.snapTo(0f)
     }
 
+    CompositionLocalProvider(LocalLiquidBottomTabSlide provides slideToTab) {
     BoxWithConstraints(
         modifier.height(barHeight),
         contentAlignment = Alignment.CenterStart,
@@ -190,16 +189,13 @@ fun LiquidBottomTabs(
                     },
                     onDrawSurface = { drawRect(containerColor) },
                 )
-                .then(interactiveHighlight.modifier)
                 .height(barHeight)
                 .fillMaxWidth()
                 .padding(4f.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {}
         CompositionLocalProvider(
-            LocalLiquidBottomTabScale provides {
-                lerp(1f, 1.2f, dampedDragAnimation.pressProgress)
-            },
+            LocalLiquidBottomTabScale provides { 1f },
         ) {
             Row(
                 Modifier
@@ -222,7 +218,6 @@ fun LiquidBottomTabs(
                         },
                         onDrawSurface = { drawRect(containerColor) },
                     )
-                    .then(interactiveHighlight.modifier)
                     .height(barHeight - 8.dp)
                     .fillMaxWidth()
                     .padding(horizontal = 4f.dp)
@@ -231,6 +226,8 @@ fun LiquidBottomTabs(
                 content = content,
             )
         }
+        val indicatorIndex = dampedDragAnimation.value
+        val indicatorOffsetPx = indicatorIndex * tabWidth
         Box(
             Modifier
                 .padding(horizontal = 4f.dp)
@@ -240,6 +237,12 @@ fun LiquidBottomTabs(
                     } else {
                         size.width - (dampedDragAnimation.value + 1f) * tabWidth + panelOffset
                     }
+                }
+                .testTag("segmented-indicator")
+                .semantics {
+                    this[SegmentedIndicatorIndexKey] = indicatorIndex
+                    this[SegmentedIndicatorOffsetPxKey] = indicatorOffsetPx
+                    this[SegmentedTabWidthPxKey] = tabWidth
                 }
                 .clip(shape)
                 .drawBackdrop(
@@ -251,17 +254,15 @@ fun LiquidBottomTabs(
                     },
                     highlight = {
                         val progress = dampedDragAnimation.pressProgress
-                        if (isLightTheme) Highlight.Default.copy(alpha = progress)
-                        else Highlight.Default.copy(alpha = 0.95f)
+                        Highlight.Default.copy(alpha = progress)
                     },
                     shadow = {
                         val progress = dampedDragAnimation.pressProgress
-                        if (isLightTheme) Shadow(alpha = progress)
-                        else Shadow(radius = 12.dp, alpha = 0.45f)
+                        Shadow(alpha = progress)
                     },
                     innerShadow = {
                         val progress = dampedDragAnimation.pressProgress
-                        InnerShadow(radius = 8f.dp * progress.coerceAtLeast(if (isLightTheme) 0f else 0.35f), alpha = progress.coerceAtLeast(if (isLightTheme) 0f else 0.25f))
+                        InnerShadow(radius = 8f.dp * progress, alpha = progress)
                     },
                     layerBlock = {
                         scaleX = dampedDragAnimation.scaleX
@@ -272,13 +273,11 @@ fun LiquidBottomTabs(
                     },
                     onDrawSurface = {
                         val progress = dampedDragAnimation.pressProgress
-                        if (isLightTheme) {
-                            drawRect(Color.Black.copy(alpha = 0.12f), alpha = 1f - progress)
-                            drawRect(Color.Black.copy(alpha = 0.03f * progress))
-                        } else {
-                            drawRect(Color.White.copy(alpha = 0.92f))
-                            drawRect(Color.White.copy(alpha = 0.08f * progress))
-                        }
+                        drawRect(
+                            if (isLightTheme) Color.Black.copy(alpha = 0.1f) else Color.White.copy(alpha = 0.1f),
+                            alpha = 1f - progress,
+                        )
+                        drawRect(Color.Black.copy(alpha = 0.03f * progress))
                     },
                 )
                 .height(barHeight - 8.dp)
@@ -288,8 +287,54 @@ fun LiquidBottomTabs(
             Modifier
                 .graphicsLayer { translationX = panelOffset }
                 .testTag("segmented-filters")
-                .then(interactiveHighlight.gestureModifier)
-                .then(dampedDragAnimation.modifier)
+                .pointerInput(count, isLtr, touchSlop) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var past = false
+                        var totalX = 0f
+                        var totalY = 0f
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (change.changedToUpIgnoreConsumed()) {
+                                if (past) {
+                                    val targetIndex = dampedDragAnimation.targetValue
+                                        .fastRoundToInt()
+                                        .fastCoerceIn(0, count - 1)
+                                    dampedDragAnimation.release()
+                                    val changed = indexHolder[0] != targetIndex
+                                    currentIndex = targetIndex
+                                    dampedDragAnimation.slideTo(targetIndex.toFloat())
+                                    if (changed) onTabSelectedState.value(targetIndex)
+                                    animationScope.launch {
+                                        offsetAnimation.animateTo(0f, spring(1f, 300f, 0.5f))
+                                    }
+                                }
+                                break
+                            }
+                            val delta = change.positionChange()
+                            totalX += delta.x
+                            totalY += delta.y
+                            if (!past && (abs(totalX) > touchSlop || abs(totalY) > touchSlop)) {
+                                if (abs(totalY) > abs(totalX)) break
+                                past = true
+                                dampedDragAnimation.press()
+                            }
+                            if (past) {
+                                change.consume()
+                                val width = tabWidthPx[0].coerceAtLeast(1f)
+                                dampedDragAnimation.updateValue(
+                                    (dampedDragAnimation.targetValue + delta.x / width * if (isLtr) 1f else -1f)
+                                        .fastCoerceIn(0f, (count - 1).toFloat()),
+                                )
+                                animationScope.launch {
+                                    offsetAnimation.snapTo(offsetAnimation.value + delta.x)
+                                }
+                            }
+                        }
+                    }
+                }
                 .height(barHeight)
                 .fillMaxWidth()
                 .padding(4f.dp),
@@ -297,19 +342,25 @@ fun LiquidBottomTabs(
             content = content,
         )
     }
+    }
 }
 
 @Composable
 fun RowScope.LiquidBottomTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    tabIndex: Int = -1,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scale = LocalLiquidBottomTabScale.current
+    val slide = LocalLiquidBottomTabSlide.current
     Column(
         modifier
             .clip(Capsule())
-            .clickable(interactionSource = null, indication = null, role = Role.Tab, onClick = onClick)
+            .clickable(interactionSource = null, indication = null, role = Role.Tab, onClick = {
+                if (tabIndex >= 0) slide(tabIndex)
+                onClick()
+            })
             .fillMaxHeight()
             .weight(1f)
             .graphicsLayer {

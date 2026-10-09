@@ -90,6 +90,7 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -110,6 +111,8 @@ import com.partner.studyreminder.data.PlanItem
 import com.partner.studyreminder.data.Plans
 import com.partner.studyreminder.parse.PlanTime
 import com.partner.studyreminder.ui.glass.GlassIconButton
+import com.partner.studyreminder.ui.glass.LiquidBottomTab
+import com.partner.studyreminder.ui.glass.LiquidBottomTabs
 import com.partner.studyreminder.ui.glass.GlassOverlay
 import com.partner.studyreminder.ui.glass.GlassSheet
 import com.partner.studyreminder.ui.glass.GlassTier
@@ -534,44 +537,32 @@ fun MainScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .height(56.dp)
-                        .glass(backdrop, GlassTier.Float, Capsule()),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BarSlot(StudyIcons.Checklist, stringResource(R.string.menu_todos), onClick = onOpenTodos)
-                    BarSlot(
-                        icon = StudyIcons.ContentPaste,
-                        label = "导入",
-                        contentDescription = stringResource(R.string.import_clipboard),
-                        onClick = onImportClipboard,
-                    )
-                    BarSlot(StudyIcons.MoreHoriz, "更多") {
+                PlanActionSlider(
+                    backdrop = backdrop,
+                    onTodos = onOpenTodos,
+                    onImport = onImportClipboard,
+                    onMore = {
                         contextItem = null
                         contextAnchor = null
                         menuOpen = !menuOpen
-                    }
-                }
-                Box(
-                    Modifier
-                        .size(56.dp)
-                        .clip(CircleShape)
-                        .background(colors.blue)
-                        .clickable(interactionSource = null, indication = null) {
-                            menuOpen = false
-                            contextItem = null
-                            contextAnchor = null
-                            editing = null
-                            adding = true
-                        },
-                    contentAlignment = Alignment.Center,
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                GlassIconButton(
+                    onClick = {
+                        menuOpen = false
+                        contextItem = null
+                        contextAnchor = null
+                        editing = null
+                        adding = true
+                    },
+                    backdrop = backdrop,
+                    buttonSize = 56.dp,
                 ) {
                     Icon(
                         StudyIcons.Add,
                         contentDescription = stringResource(R.string.add_slot),
-                        tint = Color.White,
+                        tint = colors.label,
                     )
                 }
             }
@@ -763,25 +754,69 @@ private fun ContextMenuRow(label: String, color: Color, onClick: () -> Unit) {
     )
 }
 
+private data class PlanAction(
+    val icon: ImageVector,
+    val label: String,
+    val description: String,
+)
+
 @Composable
-private fun RowScope.BarSlot(
-    icon: ImageVector,
-    label: String,
-    contentDescription: String = label,
-    onClick: () -> Unit,
+private fun PlanActionSlider(
+    backdrop: Backdrop,
+    onTodos: () -> Unit,
+    onImport: () -> Unit,
+    onMore: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = studyColors()
-    Column(
-        Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .clickable(interactionSource = null, indication = null, onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
+    var selected by remember { mutableIntStateOf(0) }
+    val tabs = listOf(
+        PlanAction(StudyIcons.Checklist, stringResource(R.string.menu_todos), stringResource(R.string.menu_todos)),
+        PlanAction(StudyIcons.ContentPaste, "导入", stringResource(R.string.import_clipboard)),
+        PlanAction(StudyIcons.MoreHoriz, "更多", "更多"),
+    )
+    fun run(index: Int) {
+        when (index) {
+            0 -> onTodos()
+            1 -> onImport()
+            else -> onMore()
+        }
+    }
+    LiquidBottomTabs(
+        selectedTabIndex = { selected },
+        onTabSelected = { index ->
+            selected = index
+            run(index)
+        },
+        backdrop = backdrop,
+        tabsCount = tabs.size,
+        modifier = modifier,
+        barHeight = 56.dp,
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = colors.label, modifier = Modifier.size(24.dp))
-        Spacer(Modifier.height(1.dp))
-        Text(label, color = colors.label, fontSize = 11.sp)
+        tabs.forEachIndexed { index, tab ->
+            val active = index == selected
+            LiquidBottomTab(
+                onClick = {
+                    selected = index
+                    run(index)
+                },
+                modifier = Modifier.testTag("plan-tab-${tab.label}"),
+                tabIndex = index,
+            ) {
+                Icon(
+                    tab.icon,
+                    contentDescription = tab.description,
+                    tint = if (active) colors.label else colors.secondary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(
+                    tab.label,
+                    color = if (active) colors.label else colors.secondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                )
+            }
+        }
     }
 }
 
@@ -807,7 +842,9 @@ private fun DayChips(
                 "$done/${items.size}",
                 color = colors.label,
                 fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
                 style = Tabular,
             )
         }
@@ -822,7 +859,9 @@ private fun DayChips(
                 "已排 $upcoming/${AlarmWindow.LIMIT}",
                 color = colors.label,
                 fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
                 style = Tabular,
             )
         }
@@ -831,7 +870,9 @@ private fun DayChips(
                 nextOrTotalLabel(items, viewing, today, nowMin),
                 color = colors.label,
                 fontSize = 13.sp,
+                lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
             )
         }
     }
@@ -854,7 +895,8 @@ private fun InfoChip(
                     Modifier
                 },
             )
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .height(32.dp)
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         content = content,

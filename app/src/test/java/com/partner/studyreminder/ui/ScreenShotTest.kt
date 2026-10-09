@@ -24,7 +24,13 @@ import com.partner.studyreminder.data.Plans
 import com.partner.studyreminder.data.Prefs
 import com.partner.studyreminder.data.Todos
 import com.partner.studyreminder.parse.PlanTime
+import com.partner.studyreminder.ui.glass.SegmentedIndicatorIndexKey
+import com.partner.studyreminder.ui.glass.SegmentedIndicatorOffsetPxKey
+import com.partner.studyreminder.ui.glass.SegmentedTabWidthPxKey
 import java.io.File
+import kotlin.math.abs
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import java.io.FileOutputStream
 import org.junit.Rule
 import org.junit.Test
@@ -54,6 +60,53 @@ class ScreenShotTest {
         capture("main", "dark", Prefs.THEME_DARK, MainActivity::class.java)
         captureTodos("light", Prefs.THEME_LIGHT)
         captureTodos("dark", Prefs.THEME_DARK)
+    }
+
+    @Test(timeout = 180_000)
+    fun clickingATabSlidesTheIndicatorOntoThatCell() {
+        java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Shanghai"))
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        seed(context)
+        Prefs.setSawPermissions(context, true)
+        Prefs.setTheme(context, Prefs.THEME_LIGHT)
+        com.partner.studyreminder.ui.theme.ThemeMode.notifyChanged()
+
+        val todos = ActivityScenario.launch(TodosActivity::class.java)
+        compose.waitForIdle()
+        assertIndicatorAligned(0)
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("filter-阅读").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(48)
+        val moving = indicatorIndex()
+        assertTrue("点选后指示器应在移向第 2 格的途中，实际 $moving", moving > 0.02f && moving < 0.98f)
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertIndicatorAligned(1)
+        compose.onNodeWithTag("filter-生活").performClick()
+        compose.waitForIdle()
+        assertIndicatorAligned(2)
+        compose.onNodeWithTag("filter-全部").performClick()
+        compose.waitForIdle()
+        assertIndicatorAligned(0)
+        compose.onAllNodesWithText("导入").assertCountEquals(0)
+        todos.close()
+
+        val main = ActivityScenario.launch(MainActivity::class.java)
+        compose.waitForIdle()
+        assertIndicatorAligned(0)
+        compose.onAllNodesWithText("全部").assertCountEquals(0)
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("plan-tab-更多").performClick()
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(48)
+        val planMoving = indicatorIndex()
+        assertTrue("计划页点「更多」后指示器应在移向第 3 格的途中，实际 $planMoving", planMoving > 0.05f && planMoving < 1.9f)
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        assertIndicatorAligned(2)
+        compose.onNodeWithText("打开文件").assertIsDisplayed()
+        main.close()
     }
 
     private fun seed(context: android.content.Context) {
@@ -129,6 +182,7 @@ class ScreenShotTest {
         compose.onNodeWithTag("filter-阅读").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("filter-阅读").assertIsDisplayed()
+        assertIndicatorAligned(1)
         writePng(compose.onRoot().captureToImage().asAndroidBitmap(), "学习提醒-v1.7.8-segment-settled-$theme.png")
         compose.onNodeWithTag("filter-more").performClick()
         compose.waitForIdle()
@@ -191,6 +245,21 @@ class ScreenShotTest {
         compose.onNodeWithText("通知").assertIsDisplayed()
         compose.onNodeWithText("我已允许").performScrollTo().assertIsDisplayed()
         permissions.close()
+    }
+
+    private fun indicatorIndex(): Float {
+        return compose.onNodeWithTag("segmented-indicator").fetchSemanticsNode().config[SegmentedIndicatorIndexKey]
+    }
+
+    private fun assertIndicatorAligned(index: Int) {
+        val config = compose.onNodeWithTag("segmented-indicator").fetchSemanticsNode().config
+        val value = config[SegmentedIndicatorIndexKey]
+        val offset = config[SegmentedIndicatorOffsetPxKey]
+        val width = config[SegmentedTabWidthPxKey]
+        assertEquals(index.toFloat(), value, 0.05f)
+        assertTrue(width > 1f)
+        assertEquals(index * width, offset, 1.5f)
+        assertTrue(abs(offset - index * width) < 1.5f)
     }
 
     private fun capture(name: String, theme: String, themePref: String, activity: Class<out android.app.Activity>) {
